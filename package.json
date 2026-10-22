@@ -1,0 +1,125 @@
+{
+  "name": "portato-vscode",
+  "displayName": "Portato",
+  "description": "VS Code client for the Portato daemon — manage SSH port-forwarding tunnels from the sidebar",
+  "version": "0.0.1",
+  "publisher": "portuber",
+  "private": true,
+  "engines": {
+    "vscode": "^1.85.0",
+    "node": ">=20"
+  },
+  "categories": [
+    "Other"
+  ],
+  "extensionKind": [
+    "ui"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "portato",
+          "title": "Portato",
+          "icon": "media/portato.svg"
+        }
+      ]
+    },
+    "views": {
+      "portato": [
+        {
+          "id": "portatoTunnels",
+          "name": "Tunnels"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "portato.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "portato.startDaemon",
+        "title": "Start Daemon",
+        "icon": "$(play)"
+      },
+      {
+        "command": "portato.enable",
+        "title": "Enable Tunnel",
+        "icon": "$(debug-start)"
+      },
+      {
+        "command": "portato.disable",
+        "title": "Disable Tunnel",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "portato.restart",
+        "title": "Restart Tunnel",
+        "icon": "$(debug-restart)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "portato.startDaemon",
+          "when": "view == portatoTunnels",
+          "group": "navigation"
+        },
+        {
+          "command": "portato.refresh",
+          "when": "view == portatoTunnels",
+          "group": "navigation"
+        }
+      ],
+      "view/item": [
+        {
+          "command": "portato.enable",
+          "when": "view == portatoTunnels && viewItem == off",
+          "group": "inline"
+        },
+        {
+          "command": "portato.disable",
+          "when": "view == portatoTunnels && viewItem != off",
+          "group": "inline"
+        },
+        {
+          "command": "portato.restart",
+          "when": "view == portatoTunnels && viewItem != off",
+          "group": "inline"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Portato",
+      "properties": {
+        "portato.binaryPath": {
+          "type": "string",
+          "default": "portato",
+          "markdownDescription": "Path to the `portato` binary. Set an absolute path if VS Code was launched from the Dock (GUI apps on macOS do not inherit shell `PATH`)."
+        },
+        "portato.socketPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Override the daemon socket path. When empty, discovery mirrors the Go client: `PORTATO_SOCKET` env → the `daemon.socket` marker in the portato config dir → the runtime socket path."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "typecheck": "tsc --noEmit",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.4.0"
+  }
+}
