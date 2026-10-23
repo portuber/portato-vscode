@@ -50,6 +50,8 @@ export interface LogEntry {
 
 export interface Healthz {
   readonly ok: boolean;
+  // Present since portato v1.11.0; absent on older daemons.
+  readonly version?: string;
 }
 
 export function isActive(s: TuberStatus): boolean {

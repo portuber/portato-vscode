@@ -75,11 +75,16 @@ src/
 - **Token:** `portato.token` in `dirname(socketPath)`, regenerated on every
   daemon start. Re-read on every (re)connect; on 401 re-read once and retry;
   no file → send no header.
-- **Discovery:** `PORTATO_SOCKET` → JSON marker `{"socket","pid"}` at
-  `$XDG_CONFIG_HOME/portato/daemon.socket` (socket counts only if `/healthz`
-  answers) → runtime path (macOS `~/Library/Application Support/portato/portato-<uid>.sock`).
-  env-dependent: a GUI-launched VS Code may not see shell exports — the
-  `portato.socketPath` override exists for that.
+- **Discovery:** `portato.socketPath` setting → env `PORTATO_SOCKET` → JSON
+  marker `{"socket","pid"}` (pid must be > 0) at
+  `<ConfigHome>/portato/daemon.socket`, where ConfigHome = `$XDG_CONFIG_HOME`
+  or the platform default (macOS `~/Library/Application Support`, Linux
+  `~/.config`) — the marker socket counts only if `/healthz` answers → runtime
+  path (macOS `<StateHome>/portato/portato-<uid>.sock`, Linux
+  `$XDG_RUNTIME_DIR` or `/run/user/<uid>`). env-dependent: a GUI-launched
+  VS Code may not see shell exports — the `portato.socketPath` override
+  exists for that.
+- **`GET /healthz` → `{"ok":true}`; since daemon v1.11.0 also `version`.**
 - **`PUT /tubers/{name}` replaces the tuber wholesale** — the edit form must
   round-trip every field of the config Tuber or data is silently lost.
   `move` takes `?delta=±N` in the query, no body; out-of-range is a 200 no-op.
@@ -95,9 +100,12 @@ src/
   config carries `socks5_password` in plain text). Never pass secrets through
   argv.
 - All I/O is async; no `*Sync` fs/child_process calls; lazy activation.
-- `portato daemon` is a foreground process: spawn `{ detached: true,
-  stdio: "ignore" }` + `unref()`; wait for readiness via `/healthz`, not by
-  watching for the socket file (it appears before the token is written).
+- `portato daemon` is a foreground process: spawn
+  `{ detached: true, stdio: ["ignore","ignore",<log fd>] }` + `unref()`.
+  stderr goes to `<ConfigHome>/portato/daemon-launch.log` (read its tail on
+  failure) — a pipe owned by the extension host would SIGPIPE-kill the Go
+  daemon after host exit; wait for readiness via `/healthz`, not by watching
+  for the socket file (it appears before the token is written).
 - Prompts are offered via a notification action, never an unsolicited input
   box; dedupe by (tuber, pending kind, attempts); attempts > 0 shows a
   "wrong passphrase/password" hint; host-key accept is a modal with host +
