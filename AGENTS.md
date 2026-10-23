@@ -16,6 +16,16 @@ The Go repo: `internal/daemon/server.go` (endpoints), `internal/forward/state.go
 `internal/log/ring.go` (log entry shape). When the daemon API changes, update
 `src/types.ts` in the same PR.
 
+## Sibling repo (read-only, no prompt)
+
+`../portato` — the Portato Go repo (the daemon this extension talks to).
+Reading it is allowed without a prompt where a local
+`.opencode/opencode.json` exists (gitignored; copy
+`.opencode/opencode.jsonc.example` and adjust the paths); edits to Go code
+happen only in that repo's own session and only on explicit request. When
+the daemon IPC contract changes, update this file's contract section and
+`src/types.ts` together.
+
 ## Stack
 
 TypeScript strict · esbuild · VS Code Extension API · `vsce`.
