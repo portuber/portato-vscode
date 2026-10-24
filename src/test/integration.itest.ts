@@ -6,7 +6,7 @@ import * as fsp from "node:fs/promises";
 import * as net from "node:net";
 import * as path from "node:path";
 import type { ChildProcess } from "node:child_process";
-import { DaemonClient } from "../daemonClient";
+import { DaemonClient, httpStatusOf } from "../daemonClient";
 import { tokenPath } from "../discovery";
 import { SseStream } from "../sse";
 import { isActive, type TuberStatus } from "../types";
@@ -134,6 +134,28 @@ describe("integration: real daemon (disposable)", { skip: !PORTATO }, () => {
       }
     } finally {
       await fsp.rename(stashed, tokenFile);
+    }
+  });
+
+  it("a present-but-wrong token surfaces as HTTP 401, not a transport failure", async () => {
+    // The persistent-mismatch scenario (e.g. a socketPath override whose
+    // token file lives elsewhere): the token file EXISTS but does not match
+    // the daemon. The client must relay the daemon's 401 -- the controller
+    // tells that apart from a dead daemon by the HTTP status alone.
+    const tokenFile = tokenPath(sock);
+    const real = await fsp.readFile(tokenFile, "utf8");
+    await fsp.writeFile(tokenFile, "not-the-token\n");
+    try {
+      const wrong = await DaemonClient.create(sock);
+      try {
+        await assert.rejects(() => wrong.healthz(), (e: unknown) =>
+          httpStatusOf(e) === 401,
+        );
+      } finally {
+        wrong.destroy();
+      }
+    } finally {
+      await fsp.writeFile(tokenFile, real);
     }
   });
 

@@ -27,7 +27,7 @@ class UnixSocketAgent extends http.Agent {
   }
 }
 
-class HttpError extends Error {
+export class HttpError extends Error {
   constructor(
     readonly status: number,
     message: string,
@@ -35,6 +35,11 @@ class HttpError extends Error {
     super(message);
     this.name = "HttpError";
   }
+}
+
+/** HTTP status of a daemon error, or undefined for transport failures. */
+export function httpStatusOf(e: unknown): number | undefined {
+  return e instanceof HttpError ? e.status : undefined;
 }
 
 async function readToken(socketPath: string): Promise<string> {

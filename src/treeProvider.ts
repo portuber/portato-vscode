@@ -46,6 +46,8 @@ export class TunnelsTreeProvider
   readonly dragMimeTypes = [TUNNEL_DRAG_MIME];
 
   private daemonSocket: string | undefined;
+  /** The daemon answered 401: alive, but rejecting the extension's token. */
+  private authRejected = false;
   /**
    * undefined = not fetched yet for the current daemon; [] = fetched, empty.
    * The distinction keeps "No tunnels configured" from flashing on every
@@ -81,9 +83,10 @@ export class TunnelsTreeProvider
   }
 
   /** undefined socket = daemon not reachable; the view offers Start. */
-  setDaemonState(socketPath: string | undefined): void {
-    if (this.daemonSocket === socketPath) return;
+  setDaemonState(socketPath: string | undefined, authRejected = false): void {
+    if (this.daemonSocket === socketPath && this.authRejected === authRejected) return;
     this.daemonSocket = socketPath;
+    this.authRejected = authRejected;
     this.statuses = undefined;
     this.statusesKey = undefined;
     this.pendingHosts.clear();
@@ -149,6 +152,20 @@ export class TunnelsTreeProvider
 
   private roots(): vscode.TreeItem[] {
     const t = vscode.l10n.t;
+    if (this.authRejected) {
+      const item = new vscode.TreeItem(
+        t("Daemon rejected the extension's credentials"),
+        vscode.TreeItemCollapsibleState.None,
+      );
+      item.description = t("IPC token mismatch -- check portato.socketPath or restart the daemon");
+      item.iconPath = new vscode.ThemeIcon("key");
+      item.command = {
+        command: "workbench.action.openSettings",
+        title: t("Open settings"),
+        arguments: ["portato.socketPath"],
+      };
+      return [item];
+    }
     if (!this.daemonSocket) {
       const item = new vscode.TreeItem(
         t("Daemon not running"),

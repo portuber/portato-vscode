@@ -32,6 +32,14 @@ describe("renderBar", () => {
     assert.equal(renderBar("live", "/tmp/portato.sock", 3).tooltip, "/tmp/portato.sock");
   });
 
+  it("rejected: alive-but-rejecting, points at the token, never at Start", () => {
+    assert.deepEqual(renderBar("rejected", undefined, 0), {
+      text: "$(key) Portato: credentials rejected",
+      tooltip:
+        "The daemon is running but rejects the extension's IPC token -- check portato.socketPath or restart the daemon",
+    });
+  });
+
   it("renders deterministically for repeated identical inputs", () => {
     const a = renderBar("live", "/tmp/portato.sock", 1);
     const b = renderBar("live", "/tmp/portato.sock", 1);
@@ -54,6 +62,14 @@ describe("contextSend", () => {
     assert.equal(contextSend("live", false), true);
     assert.equal(contextSend("reconnecting", true), undefined);
     assert.equal(contextSend("live", true), undefined);
+  });
+
+  it("rejected counts as running: Stop stays, Start never appears", () => {
+    // daemonRunning=true keeps the view title on Stop; a Start button there
+    // would spawn a second daemon that only loses the single-instance flock.
+    assert.equal(contextSend("rejected", undefined), true);
+    assert.equal(contextSend("rejected", false), true);
+    assert.equal(contextSend("rejected", true), undefined);
   });
 
   it("connecting between sends does not swallow the transition", () => {

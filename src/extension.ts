@@ -1,7 +1,8 @@
 import * as vscode from "vscode";
 import type { Readable } from "node:stream";
 import { homedir } from "node:os";
-import { DaemonClient, probeSocket } from "./daemonClient";
+import { DaemonClient, probeSocket, httpStatusOf } from "./daemonClient";
+import { planTunnelError, planPromptError, AuthEpisode } from "./errors";
 import { resolveSocketPath } from "./discovery";
 import { settingOverride, startDaemon, stopDaemon } from "./daemonLifecycle";
 import { askLogLevel, LogsView } from "./logsView";
@@ -57,6 +58,12 @@ class PortatoController implements vscode.Disposable {
   private disposed = false;
   private sseLive = false;
   private lastStatuses: TuberStatus[] = [];
+  /**
+   * Persistent-401 detection: a mismatch that survives fresh clients across
+   * consecutive refresh cycles (each carrying a freshly-read token) is a
+   * real token-file mismatch, not a daemon-restart race. See errors.ts.
+   */
+  private readonly authEpisode = new AuthEpisode();
 
   constructor() {
     this.coordinator = new PromptCoordinator({
@@ -161,8 +168,16 @@ class PortatoController implements vscode.Disposable {
       if (moveStream) this.sse.stop();
       this.sse.start();
       this.logs.start();
-    } catch {
-      this.teardown();
+    } catch (e) {
+      if (httpStatusOf(e) === 401) {
+        // authmw guards /healthz too: the daemon is alive but rejecting our
+        // token. Release WITHOUT the "not running" presentation -- a Start
+        // click would only lose the single-instance flock.
+        this.releaseDaemon();
+        this.showAuthRejected();
+      } else {
+        this.teardown();
+      }
       this.schedulePoll();
     }
   }
@@ -180,6 +195,18 @@ class PortatoController implements vscode.Disposable {
   }
 
   private teardown(): void {
+    this.releaseDaemon();
+    this.tree.setDaemonState(undefined);
+    this.updateStatusBar("disconnected");
+  }
+
+  /**
+   * Resource half of teardown(): stops the stream and logs, destroys the
+   * clients, clears the socket -- and touches NO UI. The 401 path pairs it
+   * with showAuthRejected(): painting "not running" first would flash the
+   * Start button and flap the daemonRunning context key every poll cycle.
+   */
+  private releaseDaemon(): void {
     this.sse.stop();
     this.logs.stop();
     if (this.streamClient && this.streamClient !== this.client) {
@@ -189,8 +216,6 @@ class PortatoController implements vscode.Disposable {
     this.client?.destroy();
     this.client = undefined;
     this.socket = undefined;
-    this.tree.setDaemonState(undefined);
-    this.updateStatusBar("disconnected");
   }
 
   private schedulePoll(): void {
@@ -207,6 +232,8 @@ class PortatoController implements vscode.Disposable {
     if (!socket) throw new Error("daemon not running");
     const client = await DaemonClient.create(socket);
     await client.healthz(); // wedged socket files must not count as "up"
+    // healthz passed -> the token matches: any earlier 401 episode is over.
+    this.authEpisode.recordSuccess();
     return client;
   }
 
@@ -220,7 +247,11 @@ class PortatoController implements vscode.Disposable {
       // the disconnected UI -- stale "connected" rows and a forever spinner
       // otherwise linger while the reconnect loop keeps polling. The stream
       // keeps retrying, so a returning daemon flips the UI back on success.
-      if (!this.disposed) this.showDaemonGone();
+      // A 401 is the exception: the daemon is alive, only the token is off.
+      if (!this.disposed) {
+        if (httpStatusOf(e) === 401) this.showAuthRejected();
+        else this.showDaemonGone();
+      }
       throw e;
     }
     if (this.disposed) {
@@ -242,6 +273,21 @@ class PortatoController implements vscode.Disposable {
   }
 
   /**
+   * Alive-but-rejecting presentation: /healthz answered 401, so the token
+   * mismatches (e.g. a socketPath override whose token file lives
+   * elsewhere). NOT "not running" -- a Start click would only lose the
+   * single-instance flock. The episode message offers the two ways out;
+   * the retry loops flip the UI back once the token reads right.
+   */
+  private showAuthRejected(): void {
+    this.lastStatuses = [];
+    this.logs.stop();
+    this.maybeShowAuthMismatch();
+    this.tree.setDaemonState(undefined, true);
+    this.updateStatusBar("rejected");
+  }
+
+  /**
    * Re-fetch statuses. Returns false when the fetch failed on the CURRENT
    * client -- the caller must not start SSE on top of a dead connection.
    * A failure on a stale client (a newer connect() swapped it meanwhile)
@@ -254,17 +300,52 @@ class PortatoController implements vscode.Disposable {
     if (!client) return false;
     try {
       const statuses = await client.tubers();
+      this.authEpisode.recordSuccess();
       this.lastStatuses = statuses;
       this.tree.setStatuses(statuses);
       this.coordinator.sync(statuses);
       for (const s of statuses) this.coordinator.offer(s);
       this.updateStatusBar(this.sseLive ? "live" : "reconnecting");
       return true;
-    } catch {
+    } catch (e) {
       // One bad GET is not daemon loss -- the SSE watchdog and the reconnect
       // path decide that. A stale client's failure is not ours at all.
+      if (client === this.client && httpStatusOf(e) === 401) {
+        this.maybeShowAuthMismatch();
+      }
       return client !== this.client;
     }
+  }
+
+  /**
+   * The client already re-read the token once per call, and each poll cycle
+   * builds a fresh client -- a 401 still failing now means the token file
+   * genuinely mismatches the daemon. Explain once per episode and offer the
+   * two ways out: recycle the daemon (regenerates the token) or check the
+   * socketPath override that discovery latched onto.
+   */
+  private maybeShowAuthMismatch(): void {
+    if (!this.authEpisode.record401()) return;
+    const restart = vscode.l10n.t("Restart daemon");
+    const settings = vscode.l10n.t("Open settings");
+    void vscode.window
+      .showErrorMessage(
+        vscode.l10n.t(
+          "portato: the daemon keeps rejecting the extension's credentials (IPC token mismatch)",
+        ),
+        restart,
+        settings,
+      )
+      .then((pick) => {
+        if (pick === restart) {
+          void this.stopDaemonCommand().then(() => this.startDaemonCommand());
+        } else if (pick === settings) {
+          void vscode.commands.executeCommand(
+            "workbench.action.openSettings",
+            "portato.socketPath",
+          );
+        }
+      });
   }
 
   private async submitPrompt(
@@ -274,9 +355,16 @@ class PortatoController implements vscode.Disposable {
   ): Promise<void> {
     const client = this.client;
     if (!client) throw new Error(vscode.l10n.t("daemon not connected"));
-    if (kind === "hostkey") await client.acceptHost(name);
-    else if (kind === "passphrase") await client.setPassphrase(name, value ?? "");
-    else await client.setPassword(name, value ?? "");
+    try {
+      if (kind === "hostkey") await client.acceptHost(name);
+      else if (kind === "passphrase") await client.setPassphrase(name, value ?? "");
+      else await client.setPassword(name, value ?? "");
+    } catch (e) {
+      // The tuber may have been deleted outside VS Code while its prompt was
+      // up; heal the tree. The message mapping lives in prompts.ts.
+      if (httpStatusOf(e) === 404) void this.refreshTubers();
+      throw e;
+    }
     await this.refreshTubers();
   }
 
@@ -293,9 +381,9 @@ class PortatoController implements vscode.Disposable {
     try {
       for (const step of steps) await client.move(name, step);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
+      // The tree re-renders in finally either way; only the message is mapped.
       void vscode.window.showErrorMessage(
-        vscode.l10n.t("portato: {0}: {1}", name, msg),
+        planTunnelError(e, name, vscode.l10n.t).message,
       );
     } finally {
       await this.refreshTubers();
@@ -530,10 +618,9 @@ class PortatoController implements vscode.Disposable {
       else await client.restart(name);
       await this.refreshTubers();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      void vscode.window.showErrorMessage(
-        vscode.l10n.t("portato: {0}: {1}", name, msg),
-      );
+      const plan = planTunnelError(e, name, vscode.l10n.t);
+      if (plan.staleItem) void this.refreshTubers();
+      void vscode.window.showErrorMessage(plan.message);
     }
   }
 
@@ -567,10 +654,9 @@ class PortatoController implements vscode.Disposable {
         vscode.l10n.t("portato: tunnel {0} deleted", name),
       );
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      void vscode.window.showErrorMessage(
-        vscode.l10n.t("portato: {0}: {1}", name, msg),
-      );
+      const plan = planTunnelError(e, name, vscode.l10n.t);
+      if (plan.staleItem) void this.refreshTubers();
+      void vscode.window.showErrorMessage(plan.message);
     }
   }
 

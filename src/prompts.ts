@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { planPromptError } from "./errors";
 import { AskedPrompts, promptKey } from "./promptKeys";
 import { promptForPlan } from "./promptForPlan";
 import type { PromptKind, TuberStatus } from "./types";
@@ -172,8 +173,9 @@ export class PromptCoordinator {
     } catch (e) {
       // Network/server failure: allow a re-ask instead of wedging the dedupe.
       this.asked.delete(key);
-      const msg = e instanceof Error ? e.message : String(e);
-      void vscode.window.showErrorMessage(vscode.l10n.t("portato: {0}: {1}", s.name, msg));
+      void vscode.window.showErrorMessage(
+        planPromptError(e, s.name, vscode.l10n.t).message,
+      );
     } finally {
       this.inFlight.delete(key);
     }

@@ -8,7 +8,12 @@
 
 import { identityT, type Translate } from "./i18n";
 
-export type BarState = "disconnected" | "connecting" | "reconnecting" | "live";
+export type BarState =
+  | "disconnected"
+  | "connecting"
+  | "reconnecting"
+  | "live"
+  | "rejected";
 
 export interface BarRender {
   text: string;
@@ -49,6 +54,16 @@ export function renderBar(
         text: `$(plug) ${t("Portato: {0} connected", connected)}`,
         tooltip: socket ?? "",
       };
+    case "rejected":
+      // The daemon answered 401: alive, but the IPC token mismatches.
+      // Deliberately NOT "not running": a Start click would only lose the
+      // single-instance flock ("daemon already running").
+      return {
+        text: `$(key) ${t("Portato: credentials rejected")}`,
+        tooltip: t(
+          "The daemon is running but rejects the extension's IPC token -- check portato.socketPath or restart the daemon",
+        ),
+      };
   }
 }
 
@@ -58,6 +73,8 @@ export function renderBar(
  * to send AND cache. "connecting" never sends: the key must reflect a proven
  * connection, not a probe -- and its conceptual true value must not be
  * cached, or it would swallow the send on the transition to "live".
+ * "rejected" counts as running: the daemon is up, and the view title must
+ * offer Stop, not a Start that would lose the single-instance flock.
  */
 export function contextSend(
   state: BarState,
