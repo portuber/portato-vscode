@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { endpoint, pendingPrompt, type TuberStatus, type TuberState } from "./types";
+import { updatePendingHosts } from "./pendingHosts";
 
 // Sidebar tree: one item per tuber, state-driven icons, plus the
 // daemon-absent state with a Start action. Menus in package.json key on
@@ -26,18 +27,32 @@ export class TunnelsTreeProvider implements vscode.TreeDataProvider<vscode.TreeI
   readonly onDidChangeTreeData = this._onDidChange.event;
 
   private daemonSocket: string | undefined;
-  private statuses: TuberStatus[] = [];
+  /**
+   * undefined = not fetched yet for the current daemon; [] = fetched, empty.
+   * The distinction keeps "No tunnels configured" from flashing on every
+   * connect/reconnect, because setDaemonState runs before the first fetch.
+   */
+  private statuses: TuberStatus[] | undefined;
+  /**
+   * Host keys seen pending, by tuber. The daemon clears `pending_host` during
+   * the connecting phase of a redial, so keying "prompting" off the live
+   * status alone would flicker the contextValue (and its inline action).
+   * Mutation rules live in updatePendingHosts (pure, unit-tested).
+   */
+  private readonly pendingHosts = new Map<string, string>();
 
   /** undefined socket = daemon not reachable; the view offers Start. */
   setDaemonState(socketPath: string | undefined): void {
     if (this.daemonSocket === socketPath) return;
     this.daemonSocket = socketPath;
-    if (!socketPath) this.statuses = [];
+    this.statuses = undefined;
+    this.pendingHosts.clear();
     this._onDidChange.fire();
   }
 
   setStatuses(statuses: TuberStatus[]): void {
     this.statuses = statuses;
+    updatePendingHosts(this.pendingHosts, statuses);
     this._onDidChange.fire();
   }
 
@@ -59,7 +74,17 @@ export class TunnelsTreeProvider implements vscode.TreeDataProvider<vscode.TreeI
       };
       return [item];
     }
-    return this.statuses.map((s) => TuberItem.fromStatus(s));
+    if (this.statuses === undefined) return [];
+    if (this.statuses.length === 0) {
+      const item = new vscode.TreeItem(
+        "No tunnels configured",
+        vscode.TreeItemCollapsibleState.None,
+      );
+      item.description = "add one in the portato config";
+      item.iconPath = new vscode.ThemeIcon("info");
+      return [item];
+    }
+    return this.statuses.map((s) => TuberItem.fromStatus(s, this.pendingHosts));
   }
 }
 
@@ -71,15 +96,20 @@ export class TuberItem extends vscode.TreeItem {
     super(label, vscode.TreeItemCollapsibleState.None);
   }
 
-  static fromStatus(s: TuberStatus): TuberItem {
+  static fromStatus(
+    s: TuberStatus,
+    pendingHosts?: ReadonlyMap<string, string>,
+  ): TuberItem {
     const item = new TuberItem(s, s.name);
     const state = s.state;
     item.description = `${endpoint(s)} -- ${state}${s.error ? " (see tooltip)" : ""}`;
     item.iconPath = new vscode.ThemeIcon(STATE_ICONS[state]);
     // A tuber blocked on a prompt gets its own contextValue so package.json
     // can offer portato.answerPrompt; other menu when-clauses (!= off) keep
-    // matching it, so disable/restart stay available.
-    const prompting = pendingPrompt(s) !== null;
+    // matching it, so disable/restart stay available. A remembered host key
+    // keeps "prompting" stable through the redial window where the daemon
+    // briefly clears pending_host.
+    const prompting = pendingPrompt(s) !== null || (pendingHosts?.has(s.name) ?? false);
     item.contextValue = prompting ? "prompting" : state;
     if (prompting) {
       // Single click re-opens the prompt (the dial blocks without bumping

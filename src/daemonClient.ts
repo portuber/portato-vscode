@@ -209,40 +209,52 @@ export class DaemonClient {
    * The caller consumes lines and destroys the stream to abort.
    */
   async eventsStream(): Promise<Readable> {
-    const headers: Record<string, string> = {
-      Accept: "text/event-stream",
-      "Cache-Control": "no-cache",
-    };
-    if (this.token) headers["Authorization"] = `Bearer ${this.token}`;
-    return new Promise<Readable>((resolve, reject) => {
-      let settled = false;
-      const timer = setTimeout(() => {
-        if (!settled) {
-          // Reject FIRST: req.destroy() only triggers the 'error' event,
-          // whose handler no-ops once `settled` is true.
-          done(new Error(`GET /events timed out after ${this.timeoutMs}ms`));
-          req.destroy();
-        }
-      }, this.timeoutMs);
-      const done = (err: Error | null, res?: http.IncomingMessage): void => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        if (err) reject(err);
-        else resolve(res as Readable);
-      };
-      const req = http.request(this.url("/events"), { agent: this.agent, method: "GET", headers }, (res) => {
-        const status = res.statusCode ?? 0;
-        if (status >= 400) {
-          res.resume();
-          done(new HttpError(status, `GET /events failed: HTTP ${status}`));
-          return;
-        }
-        done(null, res);
+    const openOnce = (): Promise<Readable> =>
+      new Promise<Readable>((resolve, reject) => {
+        const headers: Record<string, string> = {
+          Accept: "text/event-stream",
+          "Cache-Control": "no-cache",
+        };
+        if (this.token) headers["Authorization"] = `Bearer ${this.token}`;
+        let settled = false;
+        const timer = setTimeout(() => {
+          if (!settled) {
+            // Reject FIRST: req.destroy() only triggers the 'error' event,
+            // whose handler no-ops once `settled` is true.
+            done(new Error(`GET /events timed out after ${this.timeoutMs}ms`));
+            req.destroy();
+          }
+        }, this.timeoutMs);
+        const done = (err: Error | null, res?: http.IncomingMessage): void => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          if (err) reject(err);
+          else resolve(res as Readable);
+        };
+        const req = http.request(this.url("/events"), { agent: this.agent, method: "GET", headers }, (res) => {
+          const status = res.statusCode ?? 0;
+          if (status >= 400) {
+            res.resume();
+            done(new HttpError(status, `GET /events failed: HTTP ${status}`));
+            return;
+          }
+          done(null, res);
+        });
+        req.on("error", (e) => done(e));
+        req.end();
       });
-      req.on("error", (e) => done(e));
-      req.end();
-    });
+    try {
+      return await openOnce();
+    } catch (e) {
+      // Symmetric with request(): the token can rotate between client
+      // construction and this call (daemon restarted mid-reconnect).
+      if (e instanceof HttpError && e.status === 401) {
+        await this.refreshToken();
+        return openOnce();
+      }
+      throw e;
+    }
   }
 }
 

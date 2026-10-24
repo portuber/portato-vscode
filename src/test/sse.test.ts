@@ -144,6 +144,18 @@ describe("SseStream", () => {
     h.stream.stop();
   });
 
+  it("an over-long unterminated line drops the stream and reconnects", async () => {
+    const h = harness({ initialBackoffMs: 40, watchdogMs: 10_000 });
+    h.stream.start();
+    await sleep(20);
+    // 1 MiB + 1 char with no newline: not SSE from this daemon.
+    h.push("x".repeat(1024 * 1024 + 1));
+    await sleep(120); // destroy + 40ms backoff (+ slack)
+    assert.ok(h.openCalls >= 2, `opens=${h.openCalls}`);
+    assert.deepEqual(h.transitions.filter((t) => !t).length, 1);
+    h.stream.stop();
+  });
+
   it("consecutive open failures grow the backoff up to the cap", async () => {
     const h = harness({ initialBackoffMs: 40, maxBackoffMs: 120, watchdogMs: 10_000 });
     h.failNextOpen(2); // first two opens fail: delays 40, then 80

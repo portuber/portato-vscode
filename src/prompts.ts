@@ -23,6 +23,8 @@ export interface PromptCoordinatorDeps {
 
 export class PromptCoordinator {
   private readonly asked = new AskedPrompts();
+  /** Keys with a dialog currently open: offer/promptFor must not stack a second one. */
+  private readonly inFlight = new Set<string>();
 
   constructor(private readonly deps: PromptCoordinatorDeps) {}
 
@@ -37,7 +39,7 @@ export class PromptCoordinator {
 
   offer(s: TuberStatus): void {
     const p = promptKey(s);
-    if (!p || this.asked.has(p.key)) return;
+    if (!p || this.asked.has(p.key) || this.inFlight.has(p.key)) return;
     this.asked.add(p.key, { name: s.name, kind: p.kind });
     void this.ask(s, p.key);
   }
@@ -45,7 +47,28 @@ export class PromptCoordinator {
   /** Tree action: re-ask even if this exact pending state was dismissed. */
   promptFor(s: TuberStatus): void {
     const p = promptKey(s);
-    if (!p) return;
+    if (!p) {
+      // The tree item was built before a redial cleared the pending flag;
+      // the daemon re-sets it on the next dial cycle.
+      void vscode.window.showInformationMessage(
+        `portato: ${s.name}: no prompt is pending -- waiting for the next dial to re-offer it`,
+      );
+      return;
+    }
+    if (this.inFlight.has(p.key)) {
+      // A dialog for this exact key is already open. VS Code moves action
+      // toasts into the notification center after their timeout, so the user
+      // clicking here may not see it -- point at it instead of going silent.
+      void vscode.window.showInformationMessage(
+        `portato: ${s.name}: a prompt is already open -- see the notification center`,
+        "Show notifications",
+      ).then((action) => {
+        if (action !== undefined) {
+          void vscode.commands.executeCommand("notifications.showList");
+        }
+      });
+      return;
+    }
     this.asked.delete(p.key);
     this.asked.add(p.key, { name: s.name, kind: p.kind });
     void this.ask(s, p.key);
@@ -54,6 +77,7 @@ export class PromptCoordinator {
   private async ask(s: TuberStatus, key: string): Promise<void> {
     const p = promptKey(s);
     if (!p) return;
+    this.inFlight.add(key);
     try {
       if (p.kind === "hostkey") {
         // Offer first, modal only on demand: a background SSE event must not
@@ -70,10 +94,20 @@ export class PromptCoordinator {
       }
       const label =
         p.kind === "passphrase" ? "Enter passphrase" : "Enter password";
+      // An empty secret is legitimate (e.g. a key with an empty passphrase):
+      // the input box rejects it to prevent accidents, but the explicit
+      // action sends "" through the same submit path.
+      const sendEmpty =
+        p.kind === "passphrase" ? "Send empty passphrase" : "Send empty password";
       const action = await vscode.window.showInformationMessage(
         this.messageFor(s, p),
         label,
+        sendEmpty,
       );
+      if (action === sendEmpty) {
+        await this.deps.submit(s.name, p.kind, "");
+        return;
+      }
       if (action !== label) return; // dismissed -- the tree action re-opens
       const value =
         p.kind === "passphrase"
@@ -86,6 +120,8 @@ export class PromptCoordinator {
       this.asked.delete(key);
       const msg = e instanceof Error ? e.message : String(e);
       void vscode.window.showErrorMessage(`portato: ${s.name}: ${msg}`);
+    } finally {
+      this.inFlight.delete(key);
     }
   }
 

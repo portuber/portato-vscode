@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import * as vscode from "vscode";
 import { probeSocket } from "./daemonClient";
 import { markerPath, overrideSocketPath, resolveSocketPath } from "./discovery";
+import { decodeLaunchTail } from "./launchLog";
 
 // `portato daemon` runs in the FOREGROUND. Launch it detached so it survives
 // the extension host: { detached: true, stdio: ["ignore","ignore",<file>] }
@@ -84,8 +85,8 @@ async function readLaunchLog(offset: number): Promise<string> {
       const { size } = await handle.stat();
       const length = Math.min(Math.max(size - offset, 0), STDERR_CAP);
       if (length === 0) return "";
-      const { buffer } = await handle.read(Buffer.alloc(length), 0, length, offset);
-      return buffer.toString("utf8").trim();
+      const { buffer, bytesRead } = await handle.read(Buffer.alloc(length), 0, length, offset);
+      return decodeLaunchTail(buffer, bytesRead);
     } finally {
       await handle.close();
     }

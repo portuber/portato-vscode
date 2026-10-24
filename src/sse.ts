@@ -51,6 +51,11 @@ const DEFAULTS = {
   debounceMs: 100,
 };
 
+// Defensive ceiling for an UNTERMINATED line: real frames are a handful of
+// bytes, so a buffer past this is a wedged peer, not SSE. The stream is
+// dropped and the reconnect path takes over.
+const MAX_LINE_CHARS = 1024 * 1024;
+
 export class SseStream {
   private readonly watchdogMs: number;
   private readonly initialBackoffMs: number;
@@ -145,6 +150,12 @@ export class SseStream {
         const lines = buf.split("\n");
         buf = lines.pop() ?? "";
         for (const line of lines) this.handleLine(line, gen);
+        // Check the REMAINDER, not the raw chunk: one large burst of complete
+        // lines is legitimate traffic and must not trip the ceiling.
+        if (buf.length > MAX_LINE_CHARS) {
+          stream.destroy();
+          return;
+        }
       }
     } catch {
       // Stream error or watchdog destroy -- reconnect below.

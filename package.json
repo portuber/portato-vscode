@@ -151,7 +151,9 @@
     "compile": "node esbuild.js",
     "watch": "node esbuild.js --watch",
     "typecheck": "tsc --noEmit",
-    "test": "npm run compile && node --test out/test/",
+    "test": "npm run compile && node --test out/test/*.test.js",
+    "test:integration": "npm run compile && node --test out/test/*.itest.js",
+    "test:all": "npm run compile && node --test out/test/*.test.js out/test/*.itest.js",
     "package": "vsce package"
   },
   "devDependencies": {

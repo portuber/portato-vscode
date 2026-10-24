@@ -276,6 +276,51 @@ describe("DaemonClient", () => {
     t.after(() => client.destroy());
     await assert.rejects(() => client.eventsStream(), /timed out/);
   });
+
+  it("eventsStream: 401 rotates the token and retries once, like request()", async (t) => {
+    let daemon: FakeDaemon;
+    daemon = await startFakeDaemon({
+      dir,
+      token: "old-token",
+      handler: async (req, res) => {
+        if (req.headers["authorization"] !== "Bearer new-token") {
+          await json(res, 401, { error: "unauthorized" });
+          // Rotate the token as a daemon restart would.
+          await daemon.setToken("new-token");
+          return;
+        }
+        res.writeHead(200, { "Content-Type": "text/event-stream" });
+        res.write("data: {}\n\n");
+      },
+    });
+    t.after(async () => {
+      await daemon.close();
+    });
+    const client = await DaemonClient.create(daemon.socketPath);
+    t.after(() => client.destroy());
+    const stream = await client.eventsStream();
+    assert.equal(await readLine(stream), "data: {}");
+    assert.equal(daemon.requests.length, 2);
+    assert.equal(daemon.requests[1]?.headers["authorization"], "Bearer new-token");
+    stream.destroy();
+  });
+
+  it("eventsStream: a second 401 is not retried forever", async (t) => {
+    const daemon = await startFakeDaemon({
+      dir,
+      token: TOKEN,
+      handler: async (_req, res) => {
+        await json(res, 401, { error: "unauthorized" });
+      },
+    });
+    t.after(async () => {
+      await daemon.close();
+    });
+    const client = await DaemonClient.create(daemon.socketPath);
+    t.after(() => client.destroy());
+    await assert.rejects(() => client.eventsStream(), /HTTP 401/);
+    assert.equal(daemon.requests.length, 2); // original + one retry
+  });
 });
 
 function readLine(stream: NodeJS.ReadableStream): Promise<string> {

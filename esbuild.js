@@ -16,14 +16,15 @@ const extensionConfig = {
   logLevel: "info",
 };
 
-// Unit tests run under plain `node --test` (no VS Code): bundled from
-// src/test/*.test.ts, vscode stays external so importing it fails loudly
-// if a test accidentally pulls UI code.
+// Tests run under plain `node --test` (no VS Code): bundled from
+// src/test/*.test.ts (unit) and src/test/*.itest.ts (integration against a
+// real daemon). vscode stays external so importing it fails loudly if a test
+// accidentally pulls UI code.
 async function testConfig() {
   let entries = [];
   try {
     entries = (await fsp.readdir("src/test"))
-      .filter((f) => f.endsWith(".test.ts"))
+      .filter((f) => f.endsWith(".test.ts") || f.endsWith(".itest.ts"))
       .map((f) => path.join("src/test", f));
   } catch {
     // no tests yet -- nothing to build

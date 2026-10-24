@@ -6,7 +6,7 @@ import { settingOverride, startDaemon, stopDaemon } from "./daemonLifecycle";
 import { PromptCoordinator } from "./prompts";
 import { SseStream } from "./sse";
 import { TunnelsTreeProvider, TuberItem } from "./treeProvider";
-import { pendingPrompt, type PromptKind, type TuberStatus } from "./types";
+import { pendingPrompt, isActive, type PromptKind, type TuberStatus } from "./types";
 
 // Controller wiring: discovery -> client -> SSE -> tree/statusbar, plus the
 // daemon lifecycle commands and the prompt coordinator. All re-discovery and
@@ -231,7 +231,14 @@ class PortatoController implements vscode.Disposable {
 
   /** Tree action: re-open a dismissed prompt for a blocked tuber. */
   answerPromptCommand(item?: TuberItem): void {
-    const status = item?.status ?? this.lastStatuses.find((s) => pendingPrompt(s) !== null);
+    // The tree item carries the snapshot it was built from; the pending flag
+    // may have flipped since (e.g. a redial cleared it). Look up the fresh
+    // status by name -- promptFor tells the user to wait when nothing is
+    // pending anymore instead of silently doing nothing.
+    const name = item?.status.name;
+    const status = name
+      ? this.lastStatuses.find((s) => s.name === name)
+      : this.lastStatuses.find((s) => pendingPrompt(s) !== null);
     if (status) this.coordinator.promptFor(status);
   }
 
@@ -280,7 +287,7 @@ class PortatoController implements vscode.Disposable {
   ): void {
     // sseLive is owned by onStreamChange only; Refresh and the poll timer
     // call updateStatusBar("connecting") while a stream may already be live.
-    const connected = this.lastStatuses.filter((s) => s.state === "connected").length;
+    const connected = this.lastStatuses.filter(isActive).length;
     // The context key must reflect a proven daemon connection, not the label:
     // "connecting" runs before any probe, so flipping here would make the
     // toolbar swap Start<->Stop on every failed poll cycle.
@@ -298,11 +305,13 @@ class PortatoController implements vscode.Disposable {
         break;
       case "connecting":
         this.statusBar.text = "$(sync~spin) Portato: connecting...";
-        this.statusBar.tooltip = this.socket;
+        // No socket yet: makeClient() has not resolved discovery, and the
+        // previous connection's path (if any) would be misleading here.
+        this.statusBar.tooltip = "Discovering the Portato daemon...";
         break;
       case "reconnecting":
         this.statusBar.text = "$(sync~spin) Portato: reconnecting...";
-        this.statusBar.tooltip = this.socket;
+        this.statusBar.tooltip = this.socket ?? "Reconnecting to the Portato daemon...";
         break;
       case "live":
         this.statusBar.text = `$(plug) Portato: ${connected} connected`;
@@ -321,7 +330,9 @@ class PortatoController implements vscode.Disposable {
 
 export function activate(context: vscode.ExtensionContext): void {
   const controller = new PortatoController();
-  vscode.window.registerTreeDataProvider("portatoTunnels", controller.tree);
+  context.subscriptions.push(
+    vscode.window.registerTreeDataProvider("portatoTunnels", controller.tree),
+  );
 
   const disposables = [
     controller,

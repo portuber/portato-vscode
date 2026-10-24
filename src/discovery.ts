@@ -33,6 +33,11 @@ export function overrideSocketPath(setting?: string): string | undefined {
   return process.env["PORTATO_SOCKET"] || undefined;
 }
 
+// Unix-only by design (README "Platform support"): the daemon's Windows build
+// serves a named pipe (Go internal/daemon/paths_windows.go) and keeps its
+// token under %LOCALAPPDATA% (internal/ipctoken/tokenpath_windows.go), so
+// these paths intentionally have no Windows branch. Full Windows support is
+// a planned, separately tested task.
 export function configHome(): string {
   const env = process.env["XDG_CONFIG_HOME"];
   if (env) return env;
