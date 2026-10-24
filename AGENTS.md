@@ -123,7 +123,12 @@ src/
 - Prompts are offered via a notification action, never an unsolicited input
   box; dedupe by (tuber, pending kind, attempts); attempts > 0 shows a
   "wrong passphrase/password" hint; host-key accept is a modal with host +
-  fingerprint.
+  fingerprint. An empty secret is legitimate but must be a confirmed choice:
+  the toast carries one action ("Enter passphrase/password"), the input box
+  accepts an empty answer, and a modal confirms sending it (Cancel re-opens
+  the box). `answerPrompt` for a tuber in `connecting` whose host key was
+  just accepted says "handshake in progress" instead of "no prompt is
+  pending" (shared `pendingHosts` map, pure `promptForPlan`).
 - Tolerate daemon absence: a "not running" state + a Start button. A
   standalone-mode TUI holds the ports busy -- surface a clear error.
 - SSE reconnect uses backoff and re-runs discovery + token read.

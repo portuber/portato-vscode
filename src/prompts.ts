@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { AskedPrompts, promptKey } from "./promptKeys";
+import { promptForPlan } from "./promptForPlan";
 import type { PromptKind, TuberStatus } from "./types";
 
 // Interactive prompts for a blocked tuber. UX rules:
@@ -15,6 +16,9 @@ import type { PromptKind, TuberStatus } from "./types";
 //   - host-key accept is a notification, modal only when the user asks to
 //     review (host + fingerprint); the POST body is empty -- the daemon
 //     appends pending_host_line itself
+//   - an empty secret is legitimate but must be a confirmed choice: the
+//     toast carries one action, the input box accepts an empty answer, and
+//     an explicit modal confirms sending it (Cancel re-opens the box)
 
 export interface PromptCoordinatorDeps {
   /** Send the answer to the daemon; reject propagates to the user. */
@@ -44,8 +48,20 @@ export class PromptCoordinator {
     void this.ask(s, p.key);
   }
 
-  /** Tree action: re-ask even if this exact pending state was dismissed. */
-  promptFor(s: TuberStatus): void {
+  /**
+   * Tree action: re-ask even if this exact pending state was dismissed.
+   * rememberedHost = the controller still holds a pending host key for this
+   * tuber (it is pruned as soon as the tuber leaves `connecting`), which
+   * distinguishes the post-accept handshake window from "nothing pending".
+   */
+  promptFor(s: TuberStatus, rememberedHost = false): void {
+    const plan = promptForPlan(s, rememberedHost);
+    if (plan === "handshake") {
+      void vscode.window.showInformationMessage(
+        `portato: ${s.name}: handshake in progress -- waiting for the daemon to re-offer the prompt`,
+      );
+      return;
+    }
     const p = promptKey(s);
     if (!p) {
       // The tree item was built before a redial cleared the pending flag;
@@ -94,27 +110,41 @@ export class PromptCoordinator {
       }
       const label =
         p.kind === "passphrase" ? "Enter passphrase" : "Enter password";
-      // An empty secret is legitimate (e.g. a key with an empty passphrase):
-      // the input box rejects it to prevent accidents, but the explicit
-      // action sends "" through the same submit path.
-      const sendEmpty =
-        p.kind === "passphrase" ? "Send empty passphrase" : "Send empty password";
+      // One action: an empty secret must be a deliberate, confirmed choice,
+      // not a toast button that sits next to the main one.
       const action = await vscode.window.showInformationMessage(
         this.messageFor(s, p),
         label,
-        sendEmpty,
       );
-      if (action === sendEmpty) {
-        await this.deps.submit(s.name, p.kind, "");
-        return;
-      }
       if (action !== label) return; // dismissed -- the tree action re-opens
-      const value =
-        p.kind === "passphrase"
-          ? await askPassphrase(s, p.attempts, p.detail)
-          : await askPassword(s, p.attempts, p.detail);
-      if (value === undefined) return; // cancelled
-      await this.deps.submit(s.name, p.kind, value);
+      // An empty answer is legitimate (e.g. a key with an empty passphrase);
+      // confirm it with a modal, and let Cancel fall back to the input box
+      // instead of counting as a dismissal (the dial blocks without bumping
+      // attempts, so nothing re-asks on its own).
+      for (;;) {
+        const value =
+          p.kind === "passphrase"
+            ? await askPassphrase(s, p.attempts, p.detail)
+            : await askPassword(s, p.attempts, p.detail);
+        if (value === undefined) return; // Esc in the box is the real cancel
+        if (value !== "") {
+          await this.deps.submit(s.name, p.kind, value);
+          return;
+        }
+        const sendEmpty =
+          p.kind === "passphrase"
+            ? "Send empty passphrase"
+            : "Send empty password";
+        const pick = await vscode.window.showWarningMessage(
+          `Send an empty ${p.kind} for ${s.name}?`,
+          { modal: true, detail: "The tunnel treats an empty answer as an explicit empty secret." },
+          sendEmpty,
+        );
+        if (pick === sendEmpty) {
+          await this.deps.submit(s.name, p.kind, "");
+          return;
+        }
+      }
     } catch (e) {
       // Network/server failure: allow a re-ask instead of wedging the dedupe.
       this.asked.delete(key);
@@ -147,7 +177,8 @@ export async function askPassphrase(
     prompt: attempts > 0 ? "Wrong passphrase -- try again" : `Passphrase for ${identity}`,
     password: true,
     ignoreFocusOut: true,
-    validateInput: (v) => (v.length > 0 ? undefined : "Empty passphrase"),
+    // No min-length validation: an empty answer is handled as an explicit
+    // confirmation flow in ask(), not rejected here.
   });
 }
 
@@ -157,7 +188,6 @@ export async function askPassword(s: TuberStatus, attempts: number, account: str
     prompt: attempts > 0 ? "Wrong password -- try again" : `Password for ${account}`,
     password: true,
     ignoreFocusOut: true,
-    validateInput: (v) => (v.length > 0 ? undefined : "Empty password"),
   });
 }
 

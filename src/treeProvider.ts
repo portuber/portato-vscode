@@ -38,12 +38,16 @@ export class TunnelsTreeProvider implements vscode.TreeDataProvider<vscode.TreeI
    */
   private statuses: TuberStatus[] | undefined;
   /**
-   * Host keys seen pending, by tuber. The daemon clears `pending_host` during
-   * the connecting phase of a redial, so keying "prompting" off the live
-   * status alone would flicker the contextValue (and its inline action).
-   * Mutation rules live in updatePendingHosts (pure, unit-tested).
+   * @param pendingHosts Host keys seen pending, by tuber -- injected (usually
+   * by the controller) so answerPrompt can consult the same map the tree
+   * keys its "prompting" contextValue off. The daemon clears `pending_host`
+   * during the connecting phase of a redial, so keying "prompting" off the
+   * live status alone would flicker the contextValue (and its inline
+   * action). Mutation rules live in updatePendingHosts (pure, unit-tested).
    */
-  private readonly pendingHosts = new Map<string, string>();
+  constructor(
+    private readonly pendingHosts: Map<string, string> = new Map(),
+  ) {}
 
   /** undefined socket = daemon not reachable; the view offers Start. */
   setDaemonState(socketPath: string | undefined): void {

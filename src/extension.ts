@@ -17,7 +17,14 @@ import { pendingPrompt, isActive, type PromptKind, type TuberStatus } from "./ty
 const DISCONNECTED_POLL_MS = 10_000;
 
 class PortatoController implements vscode.Disposable {
-  readonly tree = new TunnelsTreeProvider();
+  /**
+   * Host keys seen pending, by tuber. Shared with the tree (which applies
+   * the mutation rules in updatePendingHosts) and with answerPrompt, so
+   * promptFor can tell the post-accept handshake window from "nothing
+   * pending" (pure logic in promptForPlan).
+   */
+  private readonly pendingHosts = new Map<string, string>();
+  readonly tree = new TunnelsTreeProvider(this.pendingHosts);
   private readonly statusBar = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Left,
     100,
@@ -255,7 +262,7 @@ class PortatoController implements vscode.Disposable {
     const status = name
       ? this.lastStatuses.find((s) => s.name === name)
       : this.lastStatuses.find((s) => pendingPrompt(s) !== null);
-    if (status) this.coordinator.promptFor(status);
+    if (status) this.coordinator.promptFor(status, this.pendingHosts.has(status.name));
   }
 
   async startDaemonCommand(): Promise<void> {
