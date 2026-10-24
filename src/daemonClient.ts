@@ -204,7 +204,7 @@ export class DaemonClient {
   /**
    * GET /events as a raw byte stream. No overall timeout (the server holds
    * the connection open and heartbeats every 15 s), but the RESPONSE HEADERS
-   * use the regular timeout — a wedged daemon accepts the connection and
+   * use the regular timeout -- a wedged daemon accepts the connection and
    * never answers, and an unsettled open() would stall the reconnect loop.
    * The caller consumes lines and destroys the stream to abort.
    */
@@ -243,5 +243,27 @@ export class DaemonClient {
       req.on("error", (e) => done(e));
       req.end();
     });
+  }
+}
+
+/**
+ * Liveness probe: /healthz within `timeoutMs`. Used by discovery and the
+ * daemon lifecycle; one shared implementation so the timeout and the
+ * wedged-socket treatment stay identical everywhere.
+ */
+export async function probeSocket(
+  socketPath: string,
+  timeoutMs = 300,
+): Promise<boolean> {
+  try {
+    const client = await DaemonClient.create(socketPath, { timeoutMs });
+    try {
+      await client.healthz();
+      return true;
+    } finally {
+      client.destroy();
+    }
+  } catch {
+    return false;
   }
 }

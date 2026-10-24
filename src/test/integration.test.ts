@@ -16,11 +16,14 @@ import { makeTempDir, sleep } from "./fakeDaemon";
 // XDG_CONFIG_HOME / XDG_STATE_HOME / --socket keep it fully apart from any
 // daemon the machine's owner is running (the single-instance flock lives
 // under <ConfigHome>/portato/daemon.lock). The tuber points its SSH dial at
-// 127.0.0.1:<closed port>, so no real SSH server is needed — the exercise is
+// 127.0.0.1:<closed port>, so no real SSH server is needed -- the exercise is
 // the IPC contract: healthz, token auth, /tubers, SSE signals, enable/disable
 // persistence, and `portato stop`.
 
-const CANDIDATES = [process.env["PORTATO_BINARY"], "/opt/homebrew/bin/portato", "portato"];
+// The binary is taken from $PORTATO_BINARY, else the Homebrew default when
+// present. A bare "portato" candidate is useless: existsSync resolves it
+// relative to the cwd, never through PATH.
+const CANDIDATES = [process.env["PORTATO_BINARY"], "/opt/homebrew/bin/portato"];
 const PORTATO = CANDIDATES.find((p): p is string => !!p && fs.existsSync(p)) ?? null;
 
 async function freePort(): Promise<number> {

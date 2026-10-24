@@ -14,6 +14,13 @@ const STATE_ICONS: Record<TuberState, string> = {
   error: "error",
 };
 
+/** Zero time (RFC3339) means "never connected" per the daemon contract. */
+function connectedAtLabel(iso: string): string {
+  if (iso.startsWith("0001-01-01")) return "never";
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? iso : d.toLocaleString();
+}
+
 export class TunnelsTreeProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
   private readonly _onDidChange = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this._onDidChange.event;
@@ -31,10 +38,6 @@ export class TunnelsTreeProvider implements vscode.TreeDataProvider<vscode.TreeI
 
   setStatuses(statuses: TuberStatus[]): void {
     this.statuses = statuses;
-    this._onDidChange.fire();
-  }
-
-  refresh(): void {
     this._onDidChange.fire();
   }
 
@@ -92,7 +95,7 @@ export class TuberItem extends vscode.TreeItem {
       `Type: ${s.type}`,
       `Endpoint: ${endpoint(s)}`,
       `State: ${state}`,
-      `Connected at: ${s.connected_at}`,
+      `Connected at: ${connectedAtLabel(s.connected_at)}`,
     ];
     if (s.tags?.length) lines.push(`Tags: ${s.tags.join(", ")}`);
     if (s.error) lines.push(`Error: ${s.error}`);

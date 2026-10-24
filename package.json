@@ -1,7 +1,7 @@
 {
   "name": "portato-vscode",
   "displayName": "Portato",
-  "description": "VS Code client for the Portato daemon — manage SSH port-forwarding tunnels from the sidebar",
+  "description": "VS Code client for the Portato daemon -- manage SSH port-forwarding tunnels from the sidebar",
   "version": "0.0.1",
   "publisher": "portuber",
   "private": true,
@@ -75,12 +75,12 @@
       "view/title": [
         {
           "command": "portato.startDaemon",
-          "when": "view == portatoTunnels",
+          "when": "view == portatoTunnels && !portato:daemonRunning",
           "group": "navigation"
         },
         {
           "command": "portato.stopDaemon",
-          "when": "view == portatoTunnels",
+          "when": "view == portatoTunnels && portato:daemonRunning",
           "group": "navigation"
         },
         {
@@ -110,6 +110,24 @@
           "when": "view == portatoTunnels && viewItem == prompting",
           "group": "inline@1"
         }
+      ],
+      "commandPalette": [
+        {
+          "command": "portato.enable",
+          "when": "false"
+        },
+        {
+          "command": "portato.disable",
+          "when": "false"
+        },
+        {
+          "command": "portato.restart",
+          "when": "false"
+        },
+        {
+          "command": "portato.answerPrompt",
+          "when": "false"
+        }
       ]
     },
     "configuration": {
@@ -123,7 +141,7 @@
         "portato.socketPath": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Override the daemon socket path. When empty, discovery mirrors the Go client: `PORTATO_SOCKET` env → the `daemon.socket` marker in the portato config dir → the runtime socket path."
+          "markdownDescription": "Override the daemon socket path. When empty, discovery mirrors the Go client: `PORTATO_SOCKET` env -> the `daemon.socket` marker in the portato config dir -> the runtime socket path."
         }
       }
     }

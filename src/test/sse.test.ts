@@ -153,7 +153,7 @@ describe("SseStream", () => {
     const elapsed = Date.now() - t0;
     assert.ok(h.openCalls >= 3, `opens=${h.openCalls}`);
     // grew: 40 + 80 = 120ms minimum for the third attempt
-    assert.ok(elapsed >= 110, `elapsed=${elapsed}ms — backoff did not grow`);
+    assert.ok(elapsed >= 110, `elapsed=${elapsed}ms -- backoff did not grow`);
     h.stream.stop();
   });
 

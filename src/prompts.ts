@@ -77,7 +77,7 @@ export class PromptCoordinator {
       if (action !== label) return; // dismissed -- the tree action re-opens
       const value =
         p.kind === "passphrase"
-          ? await askPassphrase(s, p.attempts)
+          ? await askPassphrase(s, p.attempts, p.detail)
           : await askPassword(s, p.attempts, p.detail);
       if (value === undefined) return; // cancelled
       await this.deps.submit(s.name, p.kind, value);
@@ -101,12 +101,17 @@ export class PromptCoordinator {
   }
 }
 
-export async function askPassphrase(s: TuberStatus, attempts: number): Promise<string | undefined> {
+export async function askPassphrase(
+  s: TuberStatus,
+  attempts: number,
+  identity: string,
+): Promise<string | undefined> {
   return vscode.window.showInputBox({
     title: `Identity passphrase -- tunnel ${s.name}`,
-    prompt: attempts > 0 ? "Wrong passphrase -- try again" : "Identity passphrase",
+    prompt: attempts > 0 ? "Wrong passphrase -- try again" : `Passphrase for ${identity}`,
     password: true,
     ignoreFocusOut: true,
+    validateInput: (v) => (v.length > 0 ? undefined : "Empty passphrase"),
   });
 }
 
@@ -116,6 +121,7 @@ export async function askPassword(s: TuberStatus, attempts: number, account: str
     prompt: attempts > 0 ? "Wrong password -- try again" : `Password for ${account}`,
     password: true,
     ignoreFocusOut: true,
+    validateInput: (v) => (v.length > 0 ? undefined : "Empty password"),
   });
 }
 

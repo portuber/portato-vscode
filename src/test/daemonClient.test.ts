@@ -170,7 +170,7 @@ describe("DaemonClient", () => {
     assert.equal(pw?.url, `/tubers/${encodeURIComponent(name)}/password`);
     assert.deepEqual(JSON.parse(pw?.body ?? "{}"), { password: "secret2" });
     assert.equal(ah?.url, `/tubers/${encodeURIComponent(name)}/accept-host`);
-    assert.equal(ah?.body, ""); // empty body — the daemon appends the line
+    assert.equal(ah?.body, ""); // empty body -- the daemon appends the line
   });
 
   it("enable/disable/restart/log paths", async (t) => {
@@ -256,12 +256,18 @@ describe("DaemonClient", () => {
     const daemon = await startFakeDaemon({
       dir,
       token: TOKEN,
-      handler: async (_req, res) => {
-        // Accept the connection, never write headers — the wedged-daemon case.
-        await sleep(30_000);
-        res.writeHead(200);
-        res.end();
-      },
+      // Accept the connection, never write headers -- the wedged-daemon case.
+      // The timer is unref'd and the wait aborts on socket close so the test
+      // process can exit as soon as the suite is done.
+      handler: (_req, res) =>
+        new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, 30_000);
+          timer.unref();
+          res.on("close", () => {
+            clearTimeout(timer);
+            resolve();
+          });
+        }),
     });
     t.after(async () => {
       await daemon.close();

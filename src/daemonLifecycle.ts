@@ -3,7 +3,7 @@ import { open, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import * as vscode from "vscode";
-import { DaemonClient } from "./daemonClient";
+import { probeSocket } from "./daemonClient";
 import { markerPath, overrideSocketPath, resolveSocketPath } from "./discovery";
 
 // `portato daemon` runs in the FOREGROUND. Launch it detached so it survives
@@ -94,43 +94,46 @@ async function readLaunchLog(offset: number): Promise<string> {
   }
 }
 
-async function probe(socketPath: string): Promise<boolean> {
-  try {
-    const client = await DaemonClient.create(socketPath, { timeoutMs: 300 });
-    try {
-      await client.healthz();
-      return true;
-    } finally {
-      client.destroy();
-    }
-  } catch {
-    return false;
-  }
+/**
+ * Discovery that returns only a PROVEN-live socket. An override path resolves
+ * from the setting/env without probing (resolveSocketPath's contract), so it
+ * gets an explicit probe; marker/runtime candidates were probed by discovery
+ * already and must not be probed twice per call.
+ */
+async function resolveLiveSocket(): Promise<string | undefined> {
+  const override = settingOverride();
+  const socket = await resolveSocketPath(probeSocket, override);
+  if (!socket) return undefined;
+  if (!override) return socket;
+  return (await probeSocket(socket)) ? socket : undefined;
 }
 
 /**
  * Start the daemon and wait until discovery + /healthz confirm it is up
  * (<=5 s). Resolves with the socket path; rejects with the daemon's stderr.
+ * A daemon that is already live is a no-op success -- spawning anyway would
+ * just bounce off the single-instance flock.
  */
 export async function startDaemon(): Promise<string> {
+  const alreadyLive = await resolveLiveSocket();
+  if (alreadyLive) return alreadyLive;
+
   const state = await spawnDaemon();
   const deadline = Date.now() + READINESS_TIMEOUT_MS;
   for (;;) {
-    // An override resolves without probing, so the resolved path must be
-    // probed explicitly before we call the daemon ready.
     if (state.exited) {
       // "daemon already running" exits leave the FIRST daemon alive -- if
       // discovery finds a live one, the start counts as a success.
-      const live = await resolveSocketPath(probe, settingOverride());
-      if (live && (await probe(live))) return live;
+      const live = await resolveLiveSocket();
+      if (live) return live;
       const log = await readLaunchLog(state.logOffset);
       throw new Error(
         log ||
           `failed to run "${binaryPath()}" -- check the portato.binaryPath setting`,
       );
     }
-    const socket = await resolveSocketPath(probe, settingOverride());
-    if (socket && (await probe(socket))) return socket;
+    const socket = await resolveLiveSocket();
+    if (socket) return socket;
     if (Date.now() > deadline) {
       const log = await readLaunchLog(state.logOffset);
       throw new Error(

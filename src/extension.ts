@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import type { Readable } from "node:stream";
-import { DaemonClient } from "./daemonClient";
+import { DaemonClient, probeSocket } from "./daemonClient";
 import { resolveSocketPath } from "./discovery";
 import { settingOverride, startDaemon, stopDaemon } from "./daemonLifecycle";
 import { PromptCoordinator } from "./prompts";
@@ -27,6 +27,7 @@ class PortatoController implements vscode.Disposable {
   private client: DaemonClient | undefined;
   /** The client backing the live SSE stream; destroyed once the stream dies. */
   private streamClient: DaemonClient | undefined;
+  private connectPromise: Promise<void> | undefined;
   private socket: string | undefined;
   private pollTimer: NodeJS.Timeout | undefined;
   private disposed = false;
@@ -62,6 +63,35 @@ class PortatoController implements vscode.Disposable {
   /** Activate the connection: called on start, refresh, and on a timer. */
   async connect(): Promise<void> {
     if (this.disposed) return;
+    // Single-flight: activation, the poll timer, Refresh, the socketPath
+    // setting change and startDaemon can all call this concurrently; each
+    // call would otherwise spawn a client and adoptClient() would destroy
+    // the one an in-flight refreshTubers is using.
+    if (this.connectPromise) {
+      // A joiner (setting change, Start, Refresh) must not lose its trigger:
+      // rerun once more after the in-flight attempt so every caller sees a
+      // connect that started after its own trigger.
+      this.connectAgain = true;
+      return this.connectPromise;
+    }
+    let run!: Promise<void>;
+    run = (async () => {
+      try {
+        do {
+          this.connectAgain = false;
+          await this.doConnect();
+        } while (this.connectAgain);
+      } finally {
+        if (this.connectPromise === run) this.connectPromise = undefined;
+      }
+    })();
+    this.connectPromise = run;
+    return run;
+  }
+
+  private connectAgain = false;
+
+  private async doConnect(): Promise<void> {
     clearTimeout(this.pollTimer);
     this.updateStatusBar("connecting");
     try {
@@ -75,7 +105,15 @@ class PortatoController implements vscode.Disposable {
         this.streamClient.socketPath !== client.socketPath;
       this.adoptClient(client);
       this.tree.setDaemonState(this.socket);
-      await this.refreshTubers();
+      if (!(await this.refreshTubers())) {
+        // The daemon answered /healthz but /tubers failed: retry later
+        // instead of starting SSE on top of a shaky connection. The daemon
+        // itself is reachable, so keep the bar off the "connecting" spinner
+        // and keep the context key honest.
+        this.updateStatusBar(this.sseLive ? "live" : "reconnecting");
+        this.schedulePoll();
+        return;
+      }
       if (moveStream) this.sse.stop();
       this.sse.start();
     } catch {
@@ -115,7 +153,7 @@ class PortatoController implements vscode.Disposable {
   }
 
   private async makeClient(): Promise<DaemonClient> {
-    const socket = await resolveSocketPath(probeDaemon, settingOverride());
+    const socket = await resolveSocketPath(probeSocket, settingOverride());
     if (!socket) throw new Error("daemon not running");
     const client = await DaemonClient.create(socket);
     await client.healthz(); // wedged socket files must not count as "up"
@@ -152,9 +190,17 @@ class PortatoController implements vscode.Disposable {
     this.updateStatusBar("disconnected");
   }
 
-  private async refreshTubers(): Promise<void> {
+  /**
+   * Re-fetch statuses. Returns false when the fetch failed on the CURRENT
+   * client -- the caller must not start SSE on top of a dead connection.
+   * A failure on a stale client (a newer connect() swapped it meanwhile)
+   * reports success: the newcomer owns the UI and the caller must not
+   * schedule a pointless poll. Daemon loss itself is detected by the
+   * SSE reconnect path (openStream -> showDaemonGone), not by one bad GET.
+   */
+  private async refreshTubers(): Promise<boolean> {
     const client = this.client;
-    if (!client) return;
+    if (!client) return false;
     try {
       const statuses = await client.tubers();
       this.lastStatuses = statuses;
@@ -162,10 +208,11 @@ class PortatoController implements vscode.Disposable {
       this.coordinator.sync(statuses);
       for (const s of statuses) this.coordinator.offer(s);
       this.updateStatusBar(this.sseLive ? "live" : "reconnecting");
+      return true;
     } catch {
-      // Daemon went away mid-session: drop to the disconnected loop.
-      this.teardown();
-      this.schedulePoll();
+      // One bad GET is not daemon loss -- the SSE watchdog and the reconnect
+      // path decide that. A stale client's failure is not ours at all.
+      return client !== this.client;
     }
   }
 
@@ -234,6 +281,16 @@ class PortatoController implements vscode.Disposable {
     // sseLive is owned by onStreamChange only; Refresh and the poll timer
     // call updateStatusBar("connecting") while a stream may already be live.
     const connected = this.lastStatuses.filter((s) => s.state === "connected").length;
+    // The context key must reflect a proven daemon connection, not the label:
+    // "connecting" runs before any probe, so flipping here would make the
+    // toolbar swap Start<->Stop on every failed poll cycle.
+    if (state !== "connecting") {
+      void vscode.commands.executeCommand(
+        "setContext",
+        "portato:daemonRunning",
+        state !== "disconnected",
+      );
+    }
     switch (state) {
       case "disconnected":
         this.statusBar.text = "$(debug-disconnect) Portato: daemon not running";
@@ -259,20 +316,6 @@ class PortatoController implements vscode.Disposable {
     clearTimeout(this.pollTimer);
     this.teardown();
     this.statusBar.dispose();
-  }
-}
-
-async function probeDaemon(socketPath: string): Promise<boolean> {
-  try {
-    const client = await DaemonClient.create(socketPath, { timeoutMs: 300 });
-    try {
-      await client.healthz();
-      return true;
-    } finally {
-      client.destroy();
-    }
-  } catch {
-    return false;
   }
 }
 
