@@ -239,16 +239,13 @@ describe("DaemonClient", () => {
     const client = await DaemonClient.create(daemon.socketPath, { timeoutMs: 50 });
     t.after(() => client.destroy());
     const stream = await client.eventsStream();
-    // Read raw lines until the heartbeat comment shows up; chunk boundaries
-    // are not guaranteed, so scan rather than assume per-readline framing.
-    const lines: string[] = [];
-    const first = await readLine(stream);
-    assert.equal(first, "data: {}");
-    const deadline = Date.now() + 2000;
-    while (!lines.includes(": heartbeat") && Date.now() < deadline) {
-      lines.push(await readLine(stream));
-    }
-    assert.ok(lines.includes(": heartbeat"), `lines=${JSON.stringify(lines)}`);
+    // Raw bytes must flow and the heartbeat comment must arrive. Scan the
+    // accumulated text instead of per-line framing: TCP chunk boundaries
+    // are not guaranteed (line framing is sse.ts's job, tested there), and
+    // a line-splitting reader that drops the buffered remainder lost the
+    // heartbeat whenever the two server writes coalesced into one chunk.
+    const text = await readUntil(stream, ": heartbeat", 2000);
+    assert.ok(text.startsWith("data: {}"), `text=${JSON.stringify(text)}`);
     stream.destroy();
   });
 
@@ -344,5 +341,43 @@ function readLine(stream: NodeJS.ReadableStream): Promise<string> {
     };
     stream.on("data", onData);
     stream.on("error", onErr);
+  });
+}
+
+/**
+ * Collect raw chunks until `needle` appears in the accumulated text (or
+ * `timeoutMs` passes). Unlike readLine this never discards buffered bytes,
+ * so coalesced TCP writes cannot make the awaited fragment vanish.
+ */
+function readUntil(
+  stream: NodeJS.ReadableStream,
+  needle: string,
+  timeoutMs: number,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let text = "";
+    const done = (err?: Error) => {
+      clearTimeout(timer);
+      stream.off("data", onData);
+      stream.off("error", onError);
+      if (err) reject(err);
+      else resolve(text);
+    };
+    const timer = setTimeout(
+      () =>
+        done(
+          new Error(
+            `timeout waiting for ${JSON.stringify(needle)}; got ${JSON.stringify(text)}`,
+          ),
+        ),
+      timeoutMs,
+    );
+    const onData = (chunk: Buffer) => {
+      text += chunk.toString("utf8");
+      if (text.includes(needle)) done();
+    };
+    const onError = (e: Error) => done(e);
+    stream.on("data", onData);
+    stream.on("error", onError);
   });
 }
