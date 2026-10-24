@@ -1,10 +1,20 @@
-# Packaged .vsix contents: the bundled extension only -- no sources, no
-# test bundles, no build scripts or maps.
+# Explicit list of everything non-runtime. vsce merges this file with its
+# built-in defaults rather than replacing them; entries that overlap the
+# defaults are kept for clarity. The runtime payload is out/extension.js +
+# package.json + package.nls.json + README.md + LICENSE + media/
+# (+ CHANGELOG.md when it exists).
+.vscodeignore
+.vscode/**
+.git
+.github
+.opencode
+AGENTS.md
+.gitignore
+node_modules/**
 src/**
 out/test/**
+out/**/*.map
 esbuild.js
 tsconfig.json
-**/*.map
-.git*
-.opencode/**
-.vscode/**
+package-lock.json
+*.vsix
