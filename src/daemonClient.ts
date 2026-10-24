@@ -3,7 +3,7 @@ import * as http from "node:http";
 import * as net from "node:net";
 import type { Readable } from "node:stream";
 import { tokenPath } from "./discovery";
-import type { Healthz, LogEntry, TuberStatus } from "./types";
+import type { Healthz, LogEntry, PortatoConfig, ConfigTuber, TuberStatus } from "./types";
 
 // HTTP client over the daemon's unix socket. The transport mirrors
 // internal/client/client.go: the agent dials the socket, every request
@@ -199,6 +199,54 @@ export class DaemonClient {
   async logs(name?: string): Promise<LogEntry[]> {
     const p = name === undefined ? "/logs" : `/logs?name=${encodeURIComponent(name)}`;
     return ((await this.request(p)) ?? []) as LogEntry[];
+  }
+
+  /** The daemon's live config. The defaults carry secrets -- never log this. */
+  async config(): Promise<PortatoConfig> {
+    return (await this.request("/config")) as PortatoConfig;
+  }
+
+  async addTuber(tuber: ConfigTuber): Promise<void> {
+    await this.request("/tubers", { method: "POST", body: tuber });
+  }
+
+  /**
+   * PUT replaces the tuber wholesale (rename allowed). The body must carry
+   * EVERY field of the config Tuber -- the daemon patches the YAML with
+   * exactly what it receives, so a dropped field is silently lost.
+   */
+  async updateTuber(name: string, tuber: ConfigTuber): Promise<void> {
+    await this.request(`/tubers/${encodeURIComponent(name)}`, {
+      method: "PUT",
+      body: tuber,
+    });
+  }
+
+  async deleteTuber(name: string): Promise<void> {
+    await this.request(`/tubers/${encodeURIComponent(name)}`, { method: "DELETE" });
+  }
+
+  /** Reorder within the config list; out-of-range deltas are a 200 no-op. */
+  async move(name: string, delta: number): Promise<void> {
+    await this.request(`/tubers/${encodeURIComponent(name)}/move?delta=${delta}`, {
+      method: "POST",
+    });
+  }
+
+  /** Re-read config.yaml from disk (the daemon watches it too). */
+  async reload(): Promise<void> {
+    await this.request("/reload", { method: "POST" });
+  }
+
+  /** Cache/passphrase-store an identity, keyed by the EXACT path string. */
+  async setIdentity(path: string, passphrase: string): Promise<void> {
+    await this.request("/identities", { method: "POST", body: { path, passphrase } });
+  }
+
+  async forgetIdentity(path: string): Promise<void> {
+    await this.request(`/identities?path=${encodeURIComponent(path)}`, {
+      method: "DELETE",
+    });
   }
 
   /**

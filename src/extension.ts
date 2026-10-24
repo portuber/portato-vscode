@@ -1,13 +1,16 @@
 import * as vscode from "vscode";
 import type { Readable } from "node:stream";
+import { homedir } from "node:os";
 import { DaemonClient, probeSocket } from "./daemonClient";
 import { resolveSocketPath } from "./discovery";
 import { settingOverride, startDaemon, stopDaemon } from "./daemonLifecycle";
 import { askLogLevel, LogsView } from "./logsView";
 import { PromptCoordinator } from "./prompts";
+import { identityCandidates, type IdentityCandidate } from "./identityPaths";
 import { SseStream } from "./sse";
 import { renderBar, contextSend, type BarState } from "./statusBar";
 import { TunnelsTreeProvider, TuberItem } from "./treeProvider";
+import { matchesFilter, type TunnelFilter } from "./treeGroups";
 import { pendingPrompt, isActive, type PromptKind, type TuberStatus } from "./types";
 
 // Controller wiring: discovery -> client -> SSE -> tree/statusbar, plus the
@@ -25,7 +28,9 @@ class PortatoController implements vscode.Disposable {
    * pending" (pure logic in promptForPlan).
    */
   private readonly pendingHosts = new Map<string, string>();
-  readonly tree = new TunnelsTreeProvider(this.pendingHosts);
+  readonly tree = new TunnelsTreeProvider(this.pendingHosts, (name, steps) =>
+    this.moveTuber(name, steps),
+  );
   private readonly statusBar = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Left,
     100,
@@ -267,6 +272,80 @@ class PortatoController implements vscode.Disposable {
     await this.refreshTubers();
   }
 
+  /**
+   * Tree drag-and-drop: the daemon's move swaps with the element at
+   * idx+delta, so the tree's insert intent arrives as a chain of +/-1
+   * neighbor swaps (pure math in moveSteps). The steps run sequentially,
+   * stop on the first failure, and re-render once at the end -- the daemon
+   * may have applied a partial chain, and the tree must show that truth.
+   */
+  private async moveTuber(name: string, steps: readonly number[]): Promise<void> {
+    const client = this.client;
+    if (!client) return;
+    try {
+      for (const step of steps) await client.move(name, step);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      void vscode.window.showErrorMessage(`portato: ${name}: ${msg}`);
+    } finally {
+      await this.refreshTubers();
+    }
+  }
+
+  /**
+   * Quick-pick a tag (exact match) or a free-text substring to filter the
+   * tree by. A filter disables drag-and-drop reorder, so it must be visible
+   * in the UI: the "Clear Filter" button appears in the view title while one
+   * is active.
+   */
+  async filterTunnelsCommand(): Promise<void> {
+    if (this.lastStatuses.length === 0) {
+      void vscode.window.showInformationMessage("portato: no tunnels to filter");
+      return;
+    }
+    const tags = [
+      ...new Set(
+        this.lastStatuses.flatMap((s) => s.tags ?? []).filter((t) => t.trim() !== ""),
+      ),
+    ].sort();
+    const byName = "Filter by name...";
+    const clear = "Clear filter";
+    const picks: (vscode.QuickPickItem & { filter?: TunnelFilter })[] = [
+      ...tags.map((t) => ({ label: t, filter: { kind: "tag", value: t } as TunnelFilter })),
+      { label: byName, description: "substring on name or tag" },
+      { label: clear },
+    ];
+    const pick = await vscode.window.showQuickPick(picks, {
+      title: "Filter tunnels",
+      placeHolder: "Show only matching tunnels (tags or names)",
+    });
+    if (!pick) return;
+    if (pick.label === clear) {
+      this.tree.setFilter(undefined);
+      return;
+    }
+    let filter = pick.filter;
+    if (pick.label === byName) {
+      const input = await vscode.window.showInputBox({
+        title: "Filter tunnels",
+        prompt: "Substring matched against tunnel names and tags",
+        ignoreFocusOut: true,
+      });
+      if (input === undefined) return;
+      filter = { kind: "text", value: input };
+    }
+    this.tree.setFilter(filter);
+    if (!filter) return;
+    const shown = this.lastStatuses.filter((s) => matchesFilter(s, filter)).length;
+    void vscode.window.showInformationMessage(
+      `portato: showing ${shown} of ${this.lastStatuses.length} tunnels`,
+    );
+  }
+
+  clearFilterCommand(): void {
+    this.tree.setFilter(undefined);
+  }
+
   /** Tree action: re-open a dismissed prompt for a blocked tuber. */
   answerPromptCommand(item?: TuberItem): void {
     // The tree item carries the snapshot it was built from; the pending flag
@@ -278,6 +357,112 @@ class PortatoController implements vscode.Disposable {
       ? this.lastStatuses.find((s) => s.name === name)
       : this.lastStatuses.find((s) => pendingPrompt(s) !== null);
     if (status) this.coordinator.promptFor(status, this.pendingHosts.has(status.name));
+  }
+
+  /**
+   * Resolve which identity a tunnel uses (tuber -> defaults -> pending),
+   * ask for the passphrase and hand it to the daemon's cache/store.
+   */
+  async storeIdentityCommand(item?: TuberItem): Promise<void> {
+    const client = this.client;
+    const name = item?.status.name;
+    if (!client || !name) return;
+    try {
+      const candidates = identityCandidates(
+        name,
+        await client.config(),
+        this.lastStatuses,
+        homedir(),
+      );
+      if (candidates.length === 0) {
+        void vscode.window.showErrorMessage(
+          `portato: ${name}: no identity configured for this tunnel`,
+        );
+        return;
+      }
+      // A single unambiguous candidate is taken silently; a noted one (the
+      // shadowable default identity) always asks, so the user confirms
+      // knowingly which key the phrase belongs to.
+      let candidate: IdentityCandidate | undefined;
+      const only = candidates.length === 1 ? candidates[0] : undefined;
+      if (only && !only.note) {
+        candidate = only;
+      } else {
+        const picked = await vscode.window.showQuickPick(
+          candidates.map((c) => ({ label: c.path, description: c.note, candidate: c })),
+          {
+            title: `Identity for tunnel ${name}`,
+            placeHolder: "The daemon keys passphrases by the exact path",
+          },
+        );
+        candidate = picked?.candidate;
+      }
+      if (!candidate) return;
+      const path = candidate.path;
+      // An empty passphrase is legitimate (a key without one) but must be a
+      // confirmed choice -- with identity_passphrase_store on it also lands
+      // in the OS keyring. Cancel re-opens the box, like the dial-time flow
+      // in prompts.ts; Esc on the box is the only cancellation.
+      let passphrase: string | undefined;
+      for (;;) {
+        passphrase = await vscode.window.showInputBox({
+          title: `Identity passphrase -- ${path}`,
+          prompt: `Passphrase to cache for ${path}`,
+          password: true,
+          ignoreFocusOut: true,
+        });
+        if (passphrase === undefined) return;
+        if (passphrase !== "") break;
+        const send = "Store empty passphrase";
+        const pick = await vscode.window.showWarningMessage(
+          `Store an EMPTY passphrase for ${path}?`,
+          { modal: true },
+          send,
+        );
+        if (pick === send) break;
+      }
+      await client.setIdentity(path, passphrase);
+      await this.refreshTubers();
+      void vscode.window.showInformationMessage(`portato: passphrase stored for ${path}`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      void vscode.window.showErrorMessage(`portato: ${name}: ${msg}`);
+    }
+  }
+
+  /** Drop the daemon's cached (and keyring-stored) passphrase for an identity. */
+  async forgetIdentityCommand(item?: TuberItem): Promise<void> {
+    const client = this.client;
+    const name = item?.status.name;
+    if (!client || !name) return;
+    try {
+      const candidates = identityCandidates(
+        name,
+        await client.config(),
+        this.lastStatuses,
+        homedir(),
+      );
+      if (candidates.length === 0) {
+        void vscode.window.showErrorMessage(
+          `portato: ${name}: no identity configured for this tunnel`,
+        );
+        return;
+      }
+      const picked = await vscode.window.showQuickPick(
+        candidates.map((c) => ({ label: c.path, description: c.note })),
+        {
+          title: `Forget passphrase for tunnel ${name}`,
+          placeHolder: "The next dial will prompt again",
+        },
+      );
+      if (!picked) return;
+      const path = picked.label;
+      await client.forgetIdentity(path);
+      void vscode.window.showInformationMessage(`portato: passphrase forgotten for ${path}`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      void vscode.window.showErrorMessage(`portato: ${name}: ${msg}`);
+    }
   }
 
   async startDaemonCommand(): Promise<void> {
@@ -363,9 +548,14 @@ class PortatoController implements vscode.Disposable {
 
 export function activate(context: vscode.ExtensionContext): void {
   const controller = new PortatoController();
-  context.subscriptions.push(
-    vscode.window.registerTreeDataProvider("portatoTunnels", controller.tree),
-  );
+  // createTreeView (not registerTreeDataProvider): the view handle carries
+  // the drag-and-drop controller for reorder; the provider contract
+  // (onDidChangeTreeData) is unchanged.
+  const view = vscode.window.createTreeView("portatoTunnels", {
+    treeDataProvider: controller.tree,
+    dragAndDropController: controller.tree,
+  });
+  context.subscriptions.push(view);
 
   const disposables = [
     controller,
@@ -388,6 +578,18 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("portato.answerPrompt", (item?: TuberItem) =>
       controller.answerPromptCommand(item),
     ),
+    vscode.commands.registerCommand("portato.storeIdentity", (item?: TuberItem) =>
+      controller.storeIdentityCommand(item),
+    ),
+    vscode.commands.registerCommand("portato.forgetIdentity", (item?: TuberItem) =>
+      controller.forgetIdentityCommand(item),
+    ),
+    vscode.commands.registerCommand("portato.filterTunnels", () =>
+      controller.filterTunnelsCommand(),
+    ),
+    vscode.commands.registerCommand("portato.clearFilter", () =>
+      controller.clearFilterCommand(),
+    ),
     vscode.commands.registerCommand("portato.showLogs", () => controller.showLogsCommand()),
     vscode.commands.registerCommand("portato.showTuberLogs", (item?: TuberItem) =>
       controller.showLogsCommand(item?.status.name),
@@ -399,10 +601,12 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(...disposables);
   // The socketPath override changes where discovery looks -- reconnect so a
-  // GUI-launched window picks up the new setting without a reload.
+  // GUI-launched window picks up the new setting without a reload. groupByTag
+  // only changes how the already-fetched statuses render: re-render.
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("portato.socketPath")) void controller.connect();
+      if (e.affectsConfiguration("portato.groupByTag")) controller.tree.refresh();
     }),
   );
   void controller.connect();

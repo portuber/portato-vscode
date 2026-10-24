@@ -55,6 +55,49 @@ export interface Healthz {
   readonly version?: string;
 }
 
+// --- config.yaml mirror (GET /config bodies, PUT/POST /tubers bodies) ------
+// Source of truth: internal/config/config.go. User/Host/Port/Jumps/
+// SSHIdentity are derived (json:"-") and must NOT be round-tripped.
+
+/** One entry of `tubers:` as the daemon marshals it. */
+export interface ConfigTuber {
+  name: string;
+  type: TuberType;
+  local: string;
+  remote: string;
+  ssh: string;
+  identity: string;
+  enabled: boolean;
+  // omitempty on the Go side: absent means "no tags" / "no jump".
+  tags?: string[];
+  jump?: string;
+  // *bool: absent = inherit (on by default); false opts the tunnel out.
+  password_auth?: boolean;
+  // Plain strings without omitempty -- always present, possibly "".
+  socks5_user: string;
+  socks5_password: string;
+}
+
+/** The `defaults:` block. `socks5_password` arrives in plain text -- never log it. */
+export interface ConfigDefaults {
+  identity: string;
+  known_hosts: string;
+  accept_new_hosts: boolean;
+  socks5_user: string;
+  socks5_password: string;
+  identity_passphrase_store: boolean;
+  password_auth?: boolean;
+  ssh_password_store: boolean;
+  update_check?: boolean;
+  log: { max_size_mb: number; max_age_days: number; retain: number };
+}
+
+/** Full live config as served by GET /config. */
+export interface PortatoConfig {
+  defaults: ConfigDefaults;
+  tubers: ConfigTuber[];
+}
+
 export function isActive(s: TuberStatus): boolean {
   return s.state === "connected";
 }

@@ -66,7 +66,9 @@ src/
   statusBar.ts        pure status-bar rendering + context-key send decisions
   logDedup.ts         LogTail ring diff (tail-anchored), level rank, line format (pure)
   logsView.ts         "Portato Logs" output channel: poll /logs, filter, min level
-  treeProvider.ts     TreeDataProvider: five states, actions
+  identityPaths.ts    identity-passphrase candidate paths for a tunnel (pure)
+  treeProvider.ts     TreeDataProvider: five states, tag grouping, filter, DnD reorder
+  treeGroups.ts       pure grouping/filter visibility/move-delta math
   prompts.ts          passphrase / password / host-key prompts
   daemonLifecycle.ts  detached `portato daemon` spawn, readiness via /healthz
 ```
@@ -103,7 +105,17 @@ src/
 - **`GET /healthz` -> `{"ok":true}`; since daemon v1.11.0 also `version`.**
 - **`PUT /tubers/{name}` replaces the tuber wholesale** -- the edit form must
   round-trip every field of the config Tuber or data is silently lost.
-  `move` takes `?delta=+-N` in the query, no body; out-of-range is a 200 no-op.
+  `move` takes `?delta=+-N` in the query, no body, and **swaps** with the
+  element at idx+delta (it does not insert); out-of-range is a 200 no-op.
+  The extension emulates insert with |delta| sequential +/-1 moves.
+- **GET /config** returns the live config (`defaults` carries
+  `socks5_password` in plain text -- never log it). `password_auth` is
+  `*bool`: absent = inherit (on), explicit false = opt out. The daemon's
+  own file watcher (500 ms poll + 300 ms settle) reloads config.yaml after
+  manual edits, so the extension needs no filewatcher.
+- **POST /identities {path,passphrase} / DELETE /identities?path=** manage
+  the passphrase cache keyed by the EXACT path string (send absolute paths,
+  `~` expanded); a host without a keyring backend answers 500.
 - **Tunnel names in URLs** go through `encodeURIComponent`.
 - **Errors:** body `{"error":"..."}`; codes 400/401/404 (unknown tuber)/409
   (nothing pending / duplicate)/500. A second daemon is blocked by flock with

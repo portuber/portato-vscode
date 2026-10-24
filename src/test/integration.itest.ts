@@ -10,6 +10,7 @@ import { DaemonClient } from "../daemonClient";
 import { tokenPath } from "../discovery";
 import { SseStream } from "../sse";
 import { isActive, type TuberStatus } from "../types";
+import { moveSteps } from "../treeGroups";
 import { makeTempDir, sleep } from "./fakeDaemon";
 
 // Integration test against a REAL, disposable portato daemon: isolated
@@ -186,5 +187,113 @@ describe("integration: real daemon (disposable)", { skip: !PORTATO }, () => {
     const raw = await fsp.readFile(path.join(cfgHome, "portato", "config.yaml"), "utf8");
     assert.match(raw, /enabled:\s*true/);
     await client.disable("itest");
+  });
+
+  it("GET /config; an unchanged PUT round-trips every field", async () => {
+    client = client ?? (await DaemonClient.create(sock));
+    const cfg = await client.config();
+    const itest = cfg.tubers.find((t) => t.name === "itest");
+    assert.ok(itest, "itest in GET /config");
+    await client.updateTuber("itest", itest);
+    const after = await client.config();
+    assert.deepEqual(
+      after.tubers.find((t) => t.name === "itest"),
+      itest,
+    );
+  });
+
+  it("rename via PUT; add/move reorder the list; out-of-range move is a no-op", async () => {
+    client = client ?? (await DaemonClient.create(sock));
+    const names = async () => (await client!.tubers()).map((s) => s.name);
+    const cfg = await client.config();
+    const itest = cfg.tubers.find((t) => t.name === "itest");
+    assert.ok(itest);
+
+    // Rename: PUT targets the old name, the body carries the new one.
+    await client.updateTuber("itest", { ...itest, name: "itest-renamed" });
+    assert.deepEqual(await names(), ["itest-renamed"]);
+
+    // Add a second tuber, then move the first below it and back.
+    await client.addTuber({
+      name: "itest-b",
+      type: "local",
+      local: itest.local,
+      remote: "127.0.0.1:1",
+      ssh: itest.ssh,
+      identity: "",
+      enabled: false,
+      socks5_user: "",
+      socks5_password: "",
+    });
+    assert.deepEqual(await names(), ["itest-renamed", "itest-b"]);
+    await client.move("itest-renamed", 1);
+    assert.deepEqual(await names(), ["itest-b", "itest-renamed"]);
+    await client.move("itest-renamed", -1);
+    assert.deepEqual(await names(), ["itest-renamed", "itest-b"]);
+    // Beyond the list end the daemon answers 200 and leaves the order alone.
+    await client.move("itest-b", 5);
+    assert.deepEqual(await names(), ["itest-renamed", "itest-b"]);
+
+    await client.deleteTuber("itest-b");
+    await client.updateTuber("itest-renamed", { ...itest, name: "itest" });
+    assert.deepEqual(await names(), ["itest"]);
+  });
+
+  it("the daemon move swaps; sequential +-1 moves emulate an insert", async () => {
+    client = client ?? (await DaemonClient.create(sock));
+    const names = async () => (await client!.tubers()).map((s) => s.name);
+    const mk = (name: string) =>
+      client!.addTuber({
+        name,
+        type: "local",
+        local: "127.0.0.1:1",
+        remote: "127.0.0.1:2",
+        ssh: "u@h:22",
+        identity: "",
+        enabled: false,
+        socks5_user: "",
+        socks5_password: "",
+      });
+    await mk("itest-b");
+    await mk("itest-c");
+
+    // Raw daemon semantics: move+2 SWAPS with the element two positions
+    // away (internal/config/patch.go MoveTuberNode), it does not insert.
+    assert.deepEqual(await names(), ["itest", "itest-b", "itest-c"]);
+    await client.move("itest", 2);
+    assert.deepEqual(await names(), ["itest-c", "itest-b", "itest"]);
+    await client.move("itest", -2); // swap back
+    assert.deepEqual(await names(), ["itest", "itest-b", "itest-c"]);
+
+    // The extension's insert intent: moveSteps composes the same outcome
+    // from neighbor swaps ([1, 1] places "itest" at index 2 == the end).
+    for (const step of moveSteps(await names(), "itest", 2)!) {
+      await client.move("itest", step);
+    }
+    assert.deepEqual(await names(), ["itest-b", "itest-c", "itest"]);
+    for (const step of moveSteps(await names(), "itest", 0)!) {
+      await client.move("itest", step);
+    }
+    assert.deepEqual(await names(), ["itest", "itest-b", "itest-c"]);
+
+    await client.deleteTuber("itest-b");
+    await client.deleteTuber("itest-c");
+    assert.deepEqual(await names(), ["itest"]);
+  });
+
+  it("identities store/forget (tolerates a host without a keyring backend)", async () => {
+    client = client ?? (await DaemonClient.create(sock));
+    // On macOS with the keyring backend this touches the real login
+    // keychain; deleting a nonexistent entry is a harmless no-op, and on
+    // keyring-less hosts the daemon answers 500, which the test tolerates.
+    const pathArg = path.join(dir, "fake-itest-key");
+    try {
+      await client.setIdentity(pathArg, "pw");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/storage unavailable/.test(msg)) return; // no keyring on this host
+      throw e;
+    }
+    await client.forgetIdentity(pathArg);
   });
 });

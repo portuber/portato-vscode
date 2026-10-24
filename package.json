@@ -84,6 +84,26 @@
         "command": "portato.setLogLevel",
         "title": "Set Log Level...",
         "icon": "$(filter)"
+      },
+      {
+        "command": "portato.storeIdentity",
+        "title": "Store Identity Passphrase",
+        "icon": "$(key)"
+      },
+      {
+        "command": "portato.forgetIdentity",
+        "title": "Forget Identity Passphrase",
+        "icon": "$(key)"
+      },
+      {
+        "command": "portato.filterTunnels",
+        "title": "Filter Tunnels...",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "portato.clearFilter",
+        "title": "Clear Tunnel Filter",
+        "icon": "$(clear-all)"
       }
     ],
     "menus": {
@@ -112,6 +132,16 @@
           "command": "portato.setLogLevel",
           "when": "view == portatoTunnels",
           "group": "navigation@3"
+        },
+        {
+          "command": "portato.filterTunnels",
+          "when": "view == portatoTunnels",
+          "group": "navigation@4"
+        },
+        {
+          "command": "portato.clearFilter",
+          "when": "view == portatoTunnels && portato:filterActive",
+          "group": "navigation@4"
         }
       ],
       "view/item/context": [
@@ -139,6 +169,16 @@
           "command": "portato.showTuberLogs",
           "when": "view == portatoTunnels && viewItem =~ /^(off|connecting|connected|reconnecting|error|prompting)$/",
           "group": "1_tunnels"
+        },
+        {
+          "command": "portato.storeIdentity",
+          "when": "view == portatoTunnels && viewItem =~ /^(off|connecting|connected|reconnecting|error|prompting)$/",
+          "group": "2_ident"
+        },
+        {
+          "command": "portato.forgetIdentity",
+          "when": "view == portatoTunnels && viewItem =~ /^(off|connecting|connected|reconnecting|error|prompting)$/",
+          "group": "2_ident"
         }
       ],
       "commandPalette": [
@@ -161,6 +201,18 @@
         {
           "command": "portato.showTuberLogs",
           "when": "false"
+        },
+        {
+          "command": "portato.storeIdentity",
+          "when": "false"
+        },
+        {
+          "command": "portato.forgetIdentity",
+          "when": "false"
+        },
+        {
+          "command": "portato.clearFilter",
+          "when": "false"
         }
       ]
     },
@@ -176,6 +228,11 @@
           "type": "string",
           "default": "",
           "markdownDescription": "Override the daemon socket path. When empty, discovery mirrors the Go client: `PORTATO_SOCKET` env -> the `daemon.socket` marker in the portato config dir -> the runtime socket path."
+        },
+        "portato.groupByTag": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Group tunnels in the sidebar by their first tag. Drag-and-drop reorder is disabled while grouping or a filter is active."
         }
       }
     }
