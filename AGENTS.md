@@ -9,10 +9,12 @@ and are never reimplemented here.
 Part 1 (MVP) is implemented and reviewed: socket discovery, daemon client,
 SSE, tunnels tree, prompts, daemon lifecycle, controller wiring, unit tests
 plus an optional integration suite against a disposable real daemon
-(`PORTATO_BINARY` / `/opt/homebrew/bin/portato`). Review fixes landed in
-`1e7b211`. Next per `~/.opencode/plan/portato-vscode.md`: part 2 (logs UI,
-tunnel CRUD, l10n) -- part 1 ships plain English strings on purpose; wrapping
-them in `vscode.l10n` / `package.nls.json` is part 2 work.
+(`PORTATO_BINARY` / `/opt/homebrew/bin/portato`). Review fixes from the
+external reviews are in; next per `~/.opencode/plan/portato-vscode.md`: part 2
+(logs UI, tunnel CRUD, l10n) -- part 1 ships plain English strings on purpose;
+wrapping them in `vscode.l10n` / `package.nls.json` is part 2 work.
+The extension is unix-only (macOS/Linux); the daemon's Windows named pipe is
+not implemented (README "Platform support").
 
 ## Contract source of truth
 
@@ -33,7 +35,7 @@ the daemon IPC contract changes, update this file's contract section and
 
 ## Stack
 
-TypeScript strict ,  esbuild ,  VS Code Extension API ,  `vsce`.
+TypeScript strict, esbuild, VS Code Extension API, `vsce`.
 `extensionKind: ["ui"]` -- the daemon is local; under Remote-SSH / Dev
 Containers the extension must run on the client machine.
 
@@ -44,10 +46,13 @@ Containers the extension must run on the client machine.
 - `npm run typecheck` -- `tsc --noEmit`
 - `npm run package` -- `vsce package` (`.vsix`)
 
-Part 1 adds: `npm test` -- unit tests of the client against a fake HTTP server
-on a temporary unix socket in Node (no real daemon), plus optional
-`@vscode/test-electron` integration with a real `portato daemon` under
-temporary `PORTATO_SOCKET` + `XDG_CONFIG_HOME`.
+Part 1 adds tests run by plain `node --test` over esbuild bundles (no VS
+Code): `npm test` -- unit tests of the client against a fake HTTP server on a
+temporary unix socket in Node (no real daemon, hermetic for CI);
+`npm run test:integration` -- suite against a real `portato daemon` under
+temporary `--socket` + `XDG_CONFIG_HOME`/`XDG_STATE_HOME` (binary from
+`$PORTATO_BINARY` or `/opt/homebrew/bin/portato`; skips when absent);
+`npm run test:all` -- both.
 
 ## Layout
 
