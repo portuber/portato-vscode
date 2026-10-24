@@ -10,7 +10,9 @@ Parts 1 and 2 are implemented and reviewed. Part 1: socket discovery, daemon
 client, SSE, tunnels tree, prompts, daemon lifecycle, controller wiring, unit
 tests plus an integration suite against a disposable real daemon
 (`PORTATO_BINARY` / `/opt/homebrew/bin/portato`). Part 2: logs output channel
-(poll + tail-anchored dedup), tunnel CRUD via a webview form with conflict
+(lazy poll with adaptive backoff -- a channel never opened is never fetched,
+and new entries append under the filter instead of re-rendering;
+tail-anchored dedup), tunnel CRUD via a webview form with conflict
 check, identity passphrase store/forget, drag-and-drop reorder (the daemon's
 move swaps, so inserts are chains of +/-1), tag grouping + filter, manual
 config Reload (the daemon watches its own config), and l10n -- every UI
@@ -68,7 +70,8 @@ src/
   daemonClient.ts     HTTP over unix socket, token transport, 401 retry
   sse.ts              SSE parser for /events: signal frames, heartbeat, reconnect
   statusBar.ts        pure status-bar rendering + context-key send decisions
-  logDedup.ts         LogTail ring diff (tail-anchored), level rank, line format (pure)
+  logDedup.ts         LogTail ring diff (tail-anchored), applyPoll buffer math (pure)
+  logsPoll.ts         poll gating + adaptive backoff delays (pure)
   logsView.ts         "Portato Logs" output channel: poll /logs, filter, min level
   identityPaths.ts    identity-passphrase candidate paths for a tunnel (pure)
   treeProvider.ts     TreeDataProvider: five states, tag grouping, filter, DnD reorder

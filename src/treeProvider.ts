@@ -52,6 +52,12 @@ export class TunnelsTreeProvider
    * connect/reconnect, because setDaemonState runs before the first fetch.
    */
   private statuses: TuberStatus[] | undefined;
+  /**
+   * Cached serialization of `statuses`, compared as a plain string so a
+   * no-change poll costs one stringify of the incoming list, never of the
+   * stored one.
+   */
+  private statusesKey: string | undefined;
   private filter: TunnelFilter | undefined;
   /** Set while a drop's move round-trip is in flight; drops meanwhile are ignored. */
   moveInFlight = false;
@@ -79,13 +85,27 @@ export class TunnelsTreeProvider
     if (this.daemonSocket === socketPath) return;
     this.daemonSocket = socketPath;
     this.statuses = undefined;
+    this.statusesKey = undefined;
     this.pendingHosts.clear();
     this._onDidChange.fire();
   }
 
   setStatuses(statuses: TuberStatus[]): void {
-    this.statuses = statuses;
+    // The pending-host map is a pure function of the statuses: keep it
+    // updated even on the no-op path below.
     updatePendingHosts(this.pendingHosts, statuses);
+    // SSE signals fire refreshes on every state flip even when the payload
+    // is byte-identical; skip the tree rebuild then. Key order is
+    // deterministic (both lists come from Go's encoding/json via
+    // client.tubers()), so stringify equality is value equality, and
+    // stringify erases undefined-valued keys. The undefined -> [] transition
+    // still fires (the "No tunnels configured" placeholder must appear), so
+    // only a defined previous key can be compared. refresh()/setFilter()
+    // bypass this and always re-render.
+    const key = JSON.stringify(statuses);
+    if (this.statusesKey !== undefined && this.statusesKey === key) return;
+    this.statuses = statuses;
+    this.statusesKey = key;
     this._onDidChange.fire();
   }
 

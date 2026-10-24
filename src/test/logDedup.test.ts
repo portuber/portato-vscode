@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { LogEntry } from "../types";
-import { formatLogEntry, levelRank, LogTail, logKey, parseLogTime } from "../logDedup";
+import {
+  applyPoll,
+  formatLogEntry,
+  GAP_MARK,
+  levelRank,
+  LogTail,
+  logKey,
+  parseLogTime,
+  tickPlan,
+  type BufferItem,
+} from "../logDedup";
 
 function entry(
   time: string,
@@ -161,6 +171,63 @@ describe("levelRank", () => {
   it("returns null for unknown levels", () => {
     assert.equal(levelRank("TRACE"), null);
     assert.equal(levelRank("garbage"), null);
+  });
+});
+
+describe("applyPoll", () => {
+  const d = (entries: LogEntry[], gap = false) => ({ entries, gap });
+
+  it("a quiet poll changes nothing and adds nothing", () => {
+    const buffer: BufferItem[] = [entry("t1", "a")];
+    const r = applyPoll(buffer, d([]), 5000);
+    assert.deepEqual(r.buffer, buffer);
+    assert.deepEqual(r.added, []);
+    assert.equal(r.dropped, 0);
+  });
+
+  it("appends entries and reports them, in order", () => {
+    const r = applyPoll([entry("t1", "a")], d([entry("t2", "b"), entry("t3", "c")]), 5000);
+    assert.equal(r.buffer.length, 3);
+    assert.deepEqual(r.added, [entry("t2", "b"), entry("t3", "c")]);
+    assert.equal(r.dropped, 0);
+  });
+
+  it("a gap marker becomes part of the buffer and the added list", () => {
+    const r = applyPoll([entry("t1", "a")], d([entry("t3", "c")], true), 5000);
+    // Positional: the marker sits between the pre-gap and post-gap items.
+    assert.deepEqual(r.buffer, [entry("t1", "a"), GAP_MARK, entry("t3", "c")]);
+    assert.deepEqual(r.added, [GAP_MARK, entry("t3", "c")]);
+    assert.equal(r.dropped, 0);
+  });
+
+  it("trims the head under the cap and reports the drop count", () => {
+    // Trims are SILENT: the channel cannot delete the trimmed lines, and
+    // re-rendering on every trim would replace the whole buffer on every
+    // busy poll once the buffer is full (see tickPlan). The new buffer
+    // keeps exactly maxEntries newest items; dropped is informational.
+    const start = Array.from({ length: 10 }, (_, i) => entry(`t${i}`, `m${i}`));
+    const r = applyPoll(start, d([entry("t10", "m10")]), 10);
+    assert.equal(r.buffer.length, 10);
+    assert.deepEqual(r.buffer.slice(0, 2), [entry("t1", "m1"), entry("t2", "m2")]);
+    assert.equal(r.dropped, 1);
+    // The added list still carries what arrived (the append path consumes
+    // it -- a trim alone does not switch to the render path).
+    assert.deepEqual(r.added, [entry("t10", "m10")]);
+  });
+});
+
+describe("tickPlan", () => {
+  it("a full buffer plus new entries still appends under the line cap", () => {
+    // The cap counts VISIBLE lines, not buffer items: head-trims of the
+    // buffer never trigger the render path on their own.
+    assert.equal(tickPlan(0, 8000), "append");
+    assert.equal(tickPlan(7999, 8000), "append");
+    assert.equal(tickPlan(8000, 8000), "append");
+  });
+
+  it("re-renders only once the visible text outgrew the cap", () => {
+    assert.equal(tickPlan(8001, 8000), "render");
+    assert.equal(tickPlan(20000, 8000), "render");
   });
 });
 

@@ -107,6 +107,71 @@ export class LogTail {
   }
 }
 
+/**
+ * Marker kept in the buffer where a ring gap happened, so it survives
+ * re-renders (filter/level changes, over-cap rewrites) and always sits
+ * between the pre-gap and post-gap entries -- wherever the buffer moves it.
+ */
+export const GAP_MARK: unique symbol = Symbol("gap");
+export type BufferItem = LogEntry | typeof GAP_MARK;
+
+export interface PollResult {
+  /** The new buffer (head-trimmed to maxEntries). */
+  readonly buffer: BufferItem[];
+  /** Items appended this poll, in order -- the gap marker included. */
+  readonly added: BufferItem[];
+  /**
+   * Head items dropped to honor maxEntries. Informational: trims are
+   * SILENT -- the channel cannot delete the trimmed lines anyway, and
+   * re-rendering on every trim would replace the whole buffer on every
+   * busy poll once the buffer is full. The re-render trigger is the
+   * visible-line cap instead (see tickPlan).
+   */
+  readonly dropped: number;
+}
+
+/**
+ * Apply one diff to the view buffer: append the gap marker and new entries,
+ * trim the head back under the cap. Pure: the caller owns the channel.
+ */
+export function applyPoll(
+  buffer: readonly BufferItem[],
+  diff: LogDiff,
+  maxEntries: number,
+): PollResult {
+  const out = buffer.slice();
+  const added: BufferItem[] = [];
+  if (diff.gap) {
+    out.push(GAP_MARK);
+    added.push(GAP_MARK);
+  }
+  if (diff.entries.length > 0) {
+    out.push(...diff.entries);
+    added.push(...diff.entries);
+  }
+  let dropped = 0;
+  if (out.length > maxEntries) {
+    dropped = out.length - maxEntries;
+    out.splice(0, dropped);
+  }
+  return { buffer: out, added, dropped };
+}
+
+/**
+ * How a poll lands in the channel: appends normally, and a full re-render
+ * only once the visible text outgrew the line cap -- a head-trim alone
+ * must NOT trigger it, or every busy poll would replace the whole buffer
+ * once the buffer is full (the trimmed lines simply stay on screen until
+ * the cap rewrite drops them). The decision reads the line count as it
+ * was BEFORE this poll's appends.
+ */
+export function tickPlan(
+  bufferedLines: number,
+  maxBufferLines: number,
+): "append" | "render" {
+  return bufferedLines > maxBufferLines ? "render" : "append";
+}
+
 // Severity rank mirroring slog: DEBUG=-4, INFO=0, WARN=4, ERROR=8. A
 // "+N"/"-N" suffix shifts within the band, so "INFO+2" (slog's verbose
 // info) ranks below WARN. Unknown levels return null -- callers treat that
