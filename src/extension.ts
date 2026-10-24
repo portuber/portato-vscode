@@ -5,6 +5,7 @@ import { resolveSocketPath } from "./discovery";
 import { settingOverride, startDaemon, stopDaemon } from "./daemonLifecycle";
 import { PromptCoordinator } from "./prompts";
 import { SseStream } from "./sse";
+import { renderBar, contextSend, type BarState } from "./statusBar";
 import { TunnelsTreeProvider, TuberItem } from "./treeProvider";
 import { pendingPrompt, isActive, type PromptKind, type TuberStatus } from "./types";
 
@@ -28,6 +29,8 @@ class PortatoController implements vscode.Disposable {
   /** The client backing the live SSE stream; destroyed once the stream dies. */
   private streamClient: DaemonClient | undefined;
   private connectPromise: Promise<void> | undefined;
+  /** Last portato:daemonRunning value actually sent to setContext. */
+  private lastDaemonRunningSent: boolean | undefined;
   private socket: string | undefined;
   private pollTimer: NodeJS.Timeout | undefined;
   private disposed = false;
@@ -159,7 +162,10 @@ class PortatoController implements vscode.Disposable {
   private schedulePoll(): void {
     clearTimeout(this.pollTimer);
     if (this.disposed) return;
-    this.pollTimer = setTimeout(() => void this.connect(), DISCONNECTED_POLL_MS);
+    this.pollTimer = setTimeout(
+      () => void this.connect({ quiet: true }),
+      DISCONNECTED_POLL_MS,
+    );
   }
 
   private async makeClient(): Promise<DaemonClient> {
@@ -292,41 +298,26 @@ class PortatoController implements vscode.Disposable {
     }
   }
 
-  private updateStatusBar(
-    state: "disconnected" | "connecting" | "reconnecting" | "live",
-  ): void {
+  private updateStatusBar(state: BarState): void {
     // sseLive is owned by onStreamChange only; Refresh and the poll timer
     // call updateStatusBar("connecting") while a stream may already be live.
     const connected = this.lastStatuses.filter(isActive).length;
+    const r = renderBar(state, this.socket, connected);
+    // Skip no-op writes: repeated identical text/tooltip still cross into
+    // the renderer (the poll loop and teardown hit this every 10 s).
+    if (this.statusBar.text !== r.text) this.statusBar.text = r.text;
+    if (this.statusBar.tooltip !== r.tooltip) this.statusBar.tooltip = r.tooltip;
     // The context key must reflect a proven daemon connection, not the label:
     // "connecting" runs before any probe, so flipping here would make the
     // toolbar swap Start<->Stop on every failed poll cycle.
-    if (state !== "connecting") {
+    const ctx = contextSend(state, this.lastDaemonRunningSent);
+    if (ctx !== undefined) {
+      this.lastDaemonRunningSent = ctx;
       void vscode.commands.executeCommand(
         "setContext",
         "portato:daemonRunning",
-        state !== "disconnected",
+        ctx,
       );
-    }
-    switch (state) {
-      case "disconnected":
-        this.statusBar.text = "$(debug-disconnect) Portato: daemon not running";
-        this.statusBar.tooltip = "Start the Portato daemon to manage tunnels";
-        break;
-      case "connecting":
-        this.statusBar.text = "$(sync~spin) Portato: connecting...";
-        // No socket yet: makeClient() has not resolved discovery, and the
-        // previous connection's path (if any) would be misleading here.
-        this.statusBar.tooltip = "Discovering the Portato daemon...";
-        break;
-      case "reconnecting":
-        this.statusBar.text = "$(sync~spin) Portato: reconnecting...";
-        this.statusBar.tooltip = this.socket ?? "Reconnecting to the Portato daemon...";
-        break;
-      case "live":
-        this.statusBar.text = `$(plug) Portato: ${connected} connected`;
-        this.statusBar.tooltip = this.socket;
-        break;
     }
   }
 
