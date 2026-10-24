@@ -11,7 +11,11 @@ const STATE_ICONS: Record<TuberState, string> = {
   off: "circle-slash",
   connecting: "sync~spin",
   connected: "circle-filled",
-  reconnecting: "sync~spin",
+  // Static icon on purpose: reconnecting can last for hours (daemon backoff
+  // against a dead host), and a spinning ThemeIcon forces a constant renderer
+  // repaint for as long as the view is visible. "connecting" is short-lived,
+  // so it keeps the spinner.
+  reconnecting: "sync",
   error: "error",
 };
 
