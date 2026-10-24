@@ -69,6 +69,8 @@ src/
   identityPaths.ts    identity-passphrase candidate paths for a tunnel (pure)
   treeProvider.ts     TreeDataProvider: five states, tag grouping, filter, DnD reorder
   treeGroups.ts       pure grouping/filter visibility/move-delta math
+  tuberFormFields.ts  pure add/edit form: prefill, tag parsing, body merge, deep-compare
+  tuberForm.ts        add/edit tunnel webview form (conflict check, no secrets inline)
   prompts.ts          passphrase / password / host-key prompts
   daemonLifecycle.ts  detached `portato daemon` spawn, readiness via /healthz
 ```

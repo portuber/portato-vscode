@@ -10,6 +10,7 @@ import { identityCandidates, type IdentityCandidate } from "./identityPaths";
 import { SseStream } from "./sse";
 import { renderBar, contextSend, type BarState } from "./statusBar";
 import { TunnelsTreeProvider, TuberItem } from "./treeProvider";
+import { TuberFormController } from "./tuberForm";
 import { matchesFilter, type TunnelFilter } from "./treeGroups";
 import { pendingPrompt, isActive, type PromptKind, type TuberStatus } from "./types";
 
@@ -37,6 +38,7 @@ class PortatoController implements vscode.Disposable {
   );
   private readonly coordinator: PromptCoordinator;
   private readonly sse: SseStream;
+  private readonly forms: TuberFormController;
   /**
    * Polls GET /logs into the "Portato Logs" output channel. Started on a
    * proven connection, stopped on disconnect; the ring has no SSE events,
@@ -59,6 +61,12 @@ class PortatoController implements vscode.Disposable {
   constructor() {
     this.coordinator = new PromptCoordinator({
       submit: (name, kind, value) => this.submitPrompt(name, kind, value),
+    });
+    this.forms = new TuberFormController({
+      getClient: () => this.client,
+      refresh: async () => {
+        await this.refreshTubers();
+      },
     });
     this.sse = new SseStream(
       { open: () => this.openStream() },
@@ -514,6 +522,54 @@ class PortatoController implements vscode.Disposable {
     }
   }
 
+  /** View title: add a tunnel through the webview form. */
+  addTunnelCommand(): void {
+    void this.forms.openAdd();
+  }
+
+  /** Tree context: edit a tunnel through the webview form. */
+  editTunnelCommand(item?: TuberItem): void {
+    const name = item?.status.name;
+    if (name) void this.forms.openEdit(name);
+  }
+
+  /** Tree context: delete a tunnel after an explicit confirmation. */
+  async deleteTunnelCommand(item?: TuberItem): Promise<void> {
+    const client = this.client;
+    const name = item?.status.name;
+    if (!client || !name) return;
+    const del = "Delete";
+    const pick = await vscode.window.showWarningMessage(
+      `Delete tunnel ${name}?`,
+      { modal: true, detail: "The daemon removes it from config.yaml." },
+      del,
+    );
+    if (pick !== del) return;
+    try {
+      await client.deleteTuber(name);
+      await this.refreshTubers();
+      void vscode.window.showInformationMessage(`portato: tunnel ${name} deleted`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      void vscode.window.showErrorMessage(`portato: ${name}: ${msg}`);
+    }
+  }
+
+  /** View title: ask the daemon to reload config.yaml from disk. */
+  async reloadConfigCommand(): Promise<void> {
+    const client = this.client;
+    if (!client) return;
+    try {
+      await client.reload();
+      await this.refreshTubers();
+      void vscode.window.showInformationMessage("portato: config reloaded");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      // applyReload answers 500 with the validation error in {"error"}.
+      void vscode.window.showErrorMessage(`portato: reload failed: ${msg}`);
+    }
+  }
+
   private updateStatusBar(state: BarState): void {
     // sseLive is owned by onStreamChange only; Refresh and the poll timer
     // call updateStatusBar("connecting") while a stream may already be live.
@@ -596,6 +652,16 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.commands.registerCommand("portato.setLogLevel", () =>
       controller.setLogLevelCommand(),
+    ),
+    vscode.commands.registerCommand("portato.addTunnel", () => controller.addTunnelCommand()),
+    vscode.commands.registerCommand("portato.editTunnel", (item?: TuberItem) =>
+      controller.editTunnelCommand(item),
+    ),
+    vscode.commands.registerCommand("portato.deleteTunnel", (item?: TuberItem) =>
+      controller.deleteTunnelCommand(item),
+    ),
+    vscode.commands.registerCommand("portato.reloadConfig", () =>
+      controller.reloadConfigCommand(),
     ),
   ];
 

@@ -104,6 +104,26 @@
         "command": "portato.clearFilter",
         "title": "Clear Tunnel Filter",
         "icon": "$(clear-all)"
+      },
+      {
+        "command": "portato.addTunnel",
+        "title": "Add Tunnel",
+        "icon": "$(add)"
+      },
+      {
+        "command": "portato.editTunnel",
+        "title": "Edit Tunnel",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "portato.deleteTunnel",
+        "title": "Delete Tunnel",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "portato.reloadConfig",
+        "title": "Reload Config",
+        "icon": "$(sync)"
       }
     ],
     "menus": {
@@ -142,6 +162,16 @@
           "command": "portato.clearFilter",
           "when": "view == portatoTunnels && portato:filterActive",
           "group": "navigation@4"
+        },
+        {
+          "command": "portato.addTunnel",
+          "when": "view == portatoTunnels && portato:daemonRunning",
+          "group": "navigation@5"
+        },
+        {
+          "command": "portato.reloadConfig",
+          "when": "view == portatoTunnels && portato:daemonRunning",
+          "group": "navigation@6"
         }
       ],
       "view/item/context": [
@@ -179,6 +209,16 @@
           "command": "portato.forgetIdentity",
           "when": "view == portatoTunnels && viewItem =~ /^(off|connecting|connected|reconnecting|error|prompting)$/",
           "group": "2_ident"
+        },
+        {
+          "command": "portato.editTunnel",
+          "when": "view == portatoTunnels && viewItem =~ /^(off|connecting|connected|reconnecting|error|prompting)$/",
+          "group": "3_edit"
+        },
+        {
+          "command": "portato.deleteTunnel",
+          "when": "view == portatoTunnels && viewItem =~ /^(off|connecting|connected|reconnecting|error|prompting)$/",
+          "group": "3_edit"
         }
       ],
       "commandPalette": [
@@ -212,6 +252,14 @@
         },
         {
           "command": "portato.clearFilter",
+          "when": "false"
+        },
+        {
+          "command": "portato.editTunnel",
+          "when": "false"
+        },
+        {
+          "command": "portato.deleteTunnel",
           "when": "false"
         }
       ]
