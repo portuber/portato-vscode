@@ -63,6 +63,7 @@ src/
   discovery.ts        socket path: override -> marker -> runtime path; token path
   daemonClient.ts     HTTP over unix socket, token transport, 401 retry
   sse.ts              SSE parser for /events: signal frames, heartbeat, reconnect
+  statusBar.ts        pure status-bar rendering + context-key send decisions
   treeProvider.ts     TreeDataProvider: five states, actions
   prompts.ts          passphrase / password / host-key prompts
   daemonLifecycle.ts  detached `portato daemon` spawn, readiness via /healthz
