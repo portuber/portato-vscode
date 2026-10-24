@@ -61,7 +61,7 @@ class PortatoController implements vscode.Disposable {
   }
 
   /** Activate the connection: called on start, refresh, and on a timer. */
-  async connect(): Promise<void> {
+  async connect(opts: { quiet?: boolean } = {}): Promise<void> {
     if (this.disposed) return;
     // Single-flight: activation, the poll timer, Refresh, the socketPath
     // setting change and startDaemon can all call this concurrently; each
@@ -70,16 +70,23 @@ class PortatoController implements vscode.Disposable {
     if (this.connectPromise) {
       // A joiner (setting change, Start, Refresh) must not lose its trigger:
       // rerun once more after the in-flight attempt so every caller sees a
-      // connect that started after its own trigger.
+      // connect that started after its own trigger. The rerun is always
+      // loud, so a user action never inherits the poll timer's quiet.
       this.connectAgain = true;
       return this.connectPromise;
     }
+    let quiet = opts.quiet ?? false;
     let run!: Promise<void>;
     run = (async () => {
       try {
         do {
           this.connectAgain = false;
-          await this.doConnect();
+          // quiet covers the first pass of its own call only (the poll
+          // timer's probe must not flash the "connecting" spinner); every
+          // connectAgain rerun is loud, so a user action that joined an
+          // in-flight quiet connect still gets visible feedback.
+          await this.doConnect(quiet);
+          quiet = false;
         } while (this.connectAgain);
       } finally {
         if (this.connectPromise === run) this.connectPromise = undefined;
@@ -91,9 +98,12 @@ class PortatoController implements vscode.Disposable {
 
   private connectAgain = false;
 
-  private async doConnect(): Promise<void> {
+  private async doConnect(quiet: boolean): Promise<void> {
     clearTimeout(this.pollTimer);
-    this.updateStatusBar("connecting");
+    // The poll timer probes silently: flashing the "connecting" spinner
+    // every 10 s against a dead daemon is visual noise plus a renderer
+    // repaint. User-triggered connects stay loud for visible feedback.
+    if (!quiet) this.updateStatusBar("connecting");
     try {
       const client = await this.makeClient();
       // A live stream on a DIFFERENT socket (socketPath setting changed,
