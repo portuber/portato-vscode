@@ -61,11 +61,14 @@ src/
 ## Daemon contract — key facts (verify against the Go repo, never guess)
 
 - **State union (five strings):** `off | connecting | connected | reconnecting | error`.
-- **Prompting** = state `connecting` + a non-empty pending flag:
-  `pending_host`/`pending_fingerprint`/`pending_host_line` (TOFU),
-  `pending_passphrase` (identity path), `pending_password`
-  (`password:<user>@<host>:<port>`). Attempts counters:
-  `passphrase_attempts`, `password_attempts`. Error text in `error`.
+- **Prompting:** host key = non-empty `pending_host` regardless of state (the
+  daemon keeps it through `error`/`reconnecting` between redials; the TUI
+  checks `PendingHost != ""`). Passphrase/password = state `connecting` plus
+  `pending_passphrase` / `pending_password` (the dial blocks there; on dial
+  failure the daemon clears them before `setStateErr`). Attempts counters:
+  `passphrase_attempts`, `password_attempts`; a dismissed prompt never
+  re-asks by itself (attempts don't bump while blocked) — offer a tree
+  action that re-opens it. Error text in `error`.
   `connected_at` is always present; `0001-01-01T00:00:00Z` means "never".
 - **SSE `/events`:** signal-only `data: {}` frames → re-fetch `GET /tubers`;
   the first frame arrives immediately (it drives the initial load); heartbeat

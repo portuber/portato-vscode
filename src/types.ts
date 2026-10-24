@@ -24,7 +24,8 @@ export interface TuberStatus {
   readonly connected_at: string;
   readonly tags?: string[];
 
-  // TOFU host-key prompt; non-empty only while state is "connecting".
+  // TOFU host-key prompt; non-empty regardless of state (the daemon keeps
+  // it through error/reconnecting between redials).
   readonly pending_host?: string;
   readonly pending_fingerprint?: string;
   readonly pending_host_line?: string;
@@ -58,15 +59,24 @@ export function isActive(s: TuberStatus): boolean {
   return s.state === "connected";
 }
 
-// Prompting = state "connecting" plus a non-empty pending flag; there is no
-// separate prompting state in the daemon.
+export type PromptKind = "hostkey" | "passphrase" | "password";
+
+/**
+ * The prompt a tuber is blocked on, or null.
+ *
+ * Host key (TOFU): pending_host alone, with NO state gate. The daemon keeps
+ * pending_host through error/reconnecting on purpose (forward/tuber.go) so
+ * the accept prompt survives the backoff between redials; the TUI checks
+ * PendingHost != "" the same way. Passphrase/password: only while the dial
+ * blocks, i.e. state "connecting" -- on dial failure the daemon clears them
+ * before setStateErr.
+ */
 export function pendingPrompt(s: TuberStatus): {
-  kind: "hostkey" | "passphrase" | "password";
+  kind: PromptKind;
   detail: string;
   fingerprint?: string;
   attempts: number;
 } | null {
-  if (s.state !== "connecting") return null;
   if (s.pending_host) {
     return {
       kind: "hostkey",
@@ -75,6 +85,7 @@ export function pendingPrompt(s: TuberStatus): {
       attempts: 0,
     };
   }
+  if (s.state !== "connecting") return null;
   if (s.pending_passphrase) {
     return {
       kind: "passphrase",

@@ -1,9 +1,10 @@
 import * as vscode from "vscode";
-import { endpoint, type TuberStatus, type TuberState } from "./types";
+import { endpoint, pendingPrompt, type TuberStatus, type TuberState } from "./types";
 
 // Sidebar tree: one item per tuber, state-driven icons, plus the
 // daemon-absent state with a Start action. Menus in package.json key on
-// viewItem ("off" vs everything else), so contextValue IS the state.
+// viewItem: "off" shows enable, everything else shows disable/restart, and
+// "prompting" (a tuber blocked on a prompt) additionally shows answerPrompt.
 
 const STATE_ICONS: Record<TuberState, string> = {
   off: "circle-slash",
@@ -72,8 +73,20 @@ export class TuberItem extends vscode.TreeItem {
     const state = s.state;
     item.description = `${endpoint(s)} -- ${state}${s.error ? " (see tooltip)" : ""}`;
     item.iconPath = new vscode.ThemeIcon(STATE_ICONS[state]);
-    // Menus: viewItem == "off" shows enable; != off shows disable/restart.
-    item.contextValue = state;
+    // A tuber blocked on a prompt gets its own contextValue so package.json
+    // can offer portato.answerPrompt; other menu when-clauses (!= off) keep
+    // matching it, so disable/restart stay available.
+    const prompting = pendingPrompt(s) !== null;
+    item.contextValue = prompting ? "prompting" : state;
+    if (prompting) {
+      // Single click re-opens the prompt (the dial blocks without bumping
+      // attempts, so the notification alone can never re-ask).
+      item.command = {
+        command: "portato.answerPrompt",
+        title: "Answer Prompt",
+        arguments: [item],
+      };
+    }
     const lines = [
       `Name: ${s.name}`,
       `Type: ${s.type}`,

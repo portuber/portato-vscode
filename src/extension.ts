@@ -6,7 +6,7 @@ import { settingOverride, startDaemon, stopDaemon } from "./daemonLifecycle";
 import { PromptCoordinator } from "./prompts";
 import { SseStream } from "./sse";
 import { TunnelsTreeProvider, TuberItem } from "./treeProvider";
-import type { TuberStatus } from "./types";
+import { pendingPrompt, type PromptKind, type TuberStatus } from "./types";
 
 // Controller wiring: discovery -> client -> SSE -> tree/statusbar, plus the
 // daemon lifecycle commands and the prompt coordinator. All re-discovery and
@@ -42,6 +42,7 @@ class PortatoController implements vscode.Disposable {
       {
         onSignal: () => void this.refreshTubers(),
         onStreamChange: (open) => {
+          this.sseLive = open;
           if (!open) {
             // The stream died: its client's keep-alive sockets are no longer
             // needed unless the client is still the current API client.
@@ -123,7 +124,17 @@ class PortatoController implements vscode.Disposable {
 
   /** SSE (re)connect: fresh discovery + token read on every attempt. */
   private async openStream(): Promise<Readable> {
-    const client = await this.makeClient();
+    let client: DaemonClient;
+    try {
+      client = await this.makeClient();
+    } catch (e) {
+      // Discovery/healthz failed: the daemon is gone (or restarting). Show
+      // the disconnected UI -- stale "connected" rows and a forever spinner
+      // otherwise linger while the reconnect loop keeps polling. The stream
+      // keeps retrying, so a returning daemon flips the UI back on success.
+      if (!this.disposed) this.showDaemonGone();
+      throw e;
+    }
     if (this.disposed) {
       client.destroy();
       throw new Error("disposed");
@@ -132,6 +143,13 @@ class PortatoController implements vscode.Disposable {
     this.adoptClient(client);
     this.tree.setDaemonState(client.socketPath);
     return client.eventsStream();
+  }
+
+  /** Disconnected presentation without tearing the SSE reconnect loop down. */
+  private showDaemonGone(): void {
+    this.lastStatuses = [];
+    this.tree.setDaemonState(undefined);
+    this.updateStatusBar("disconnected");
   }
 
   private async refreshTubers(): Promise<void> {
@@ -153,7 +171,7 @@ class PortatoController implements vscode.Disposable {
 
   private async submitPrompt(
     name: string,
-    kind: "hostkey" | "passphrase" | "password",
+    kind: PromptKind,
     value: string | undefined,
   ): Promise<void> {
     const client = this.client;
@@ -162,6 +180,12 @@ class PortatoController implements vscode.Disposable {
     else if (kind === "passphrase") await client.setPassphrase(name, value ?? "");
     else await client.setPassword(name, value ?? "");
     await this.refreshTubers();
+  }
+
+  /** Tree action: re-open a dismissed prompt for a blocked tuber. */
+  answerPromptCommand(item?: TuberItem): void {
+    const status = item?.status ?? this.lastStatuses.find((s) => pendingPrompt(s) !== null);
+    if (status) this.coordinator.promptFor(status);
   }
 
   async startDaemonCommand(): Promise<void> {
@@ -207,7 +231,8 @@ class PortatoController implements vscode.Disposable {
   private updateStatusBar(
     state: "disconnected" | "connecting" | "reconnecting" | "live",
   ): void {
-    this.sseLive = state === "live";
+    // sseLive is owned by onStreamChange only; Refresh and the poll timer
+    // call updateStatusBar("connecting") while a stream may already be live.
     const connected = this.lastStatuses.filter((s) => s.state === "connected").length;
     switch (state) {
       case "disconnected":
@@ -272,6 +297,9 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.commands.registerCommand("portato.restart", (item?: TuberItem) =>
       controller.tunnelCommand("restart", item),
+    ),
+    vscode.commands.registerCommand("portato.answerPrompt", (item?: TuberItem) =>
+      controller.answerPromptCommand(item),
     ),
   ];
 

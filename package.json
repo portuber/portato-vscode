@@ -64,6 +64,11 @@
         "command": "portato.restart",
         "title": "Restart Tunnel",
         "icon": "$(debug-restart)"
+      },
+      {
+        "command": "portato.answerPrompt",
+        "title": "Answer Prompt",
+        "icon": "$(key)"
       }
     ],
     "menus": {
@@ -99,6 +104,11 @@
           "command": "portato.restart",
           "when": "view == portatoTunnels && viewItem != off",
           "group": "inline"
+        },
+        {
+          "command": "portato.answerPrompt",
+          "when": "view == portatoTunnels && viewItem == prompting",
+          "group": "inline@1"
         }
       ]
     },
