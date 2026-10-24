@@ -24,9 +24,9 @@ export function shouldPoll(connected: boolean, everShown: boolean): boolean {
 /**
  * Delay before the next poll, given the number of consecutive no-change
  * polls so far. The counter is owned by the caller (LogsView): a poll that
- * produced entries or a gap resets it, and so do show(), setMinLevel() and
- * a stop()/start() cycle; a FAILED fetch leaves it untouched -- a network
- * hiccup is not evidence of a quiet ring.
+ * produced entries or a gap resets it, and so do show() and a stop()/start()
+ * cycle; a FAILED fetch leaves it untouched -- a network hiccup is not
+ * evidence of a quiet ring.
  */
 export function nextDelayMs(idleTicks: number): number {
   return idleTicks >= IDLE_TICKS_TO_BACKOFF ? BACKED_OFF_POLL_MS : BASE_POLL_MS;

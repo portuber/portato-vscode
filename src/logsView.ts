@@ -100,9 +100,9 @@ export class LogsView implements vscode.Disposable {
 
   setMinLevel(level: LogLevel): void {
     this.minLevel = level;
-    // The re-render below can reveal previously filtered entries; do not
-    // let a stale idle count delay the next poll.
-    this.idleTicks = 0;
+    // No backoff juggling: the re-render reveals buffered entries, and the
+    // buffer holds every entry regardless of the level (matches() applies
+    // at output time), so a pending slow poll costs nothing in fidelity.
     this.render();
   }
 
@@ -149,7 +149,12 @@ export class LogsView implements vscode.Disposable {
   private kick(): void {
     if (!shouldPoll(this.connected, this.everShown)) return;
     if (this.ticking) return; // its finally block re-arms the chain
-    if (this.timer !== undefined) clearTimeout(this.timer);
+    // undefined must mean "nothing scheduled", even though the immediate
+    // tick() below re-arms the chain in its finally block anyway.
+    if (this.timer !== undefined) {
+      clearTimeout(this.timer);
+      this.timer = undefined;
+    }
     void this.tick();
   }
 
