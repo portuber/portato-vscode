@@ -58,7 +58,10 @@ export class PromptCoordinator {
     const plan = promptForPlan(s, rememberedHost);
     if (plan === "handshake") {
       void vscode.window.showInformationMessage(
-        `portato: ${s.name}: handshake in progress -- waiting for the daemon to re-offer the prompt`,
+        vscode.l10n.t(
+          "portato: {0}: handshake in progress -- waiting for the daemon to re-offer the prompt",
+          s.name,
+        ),
       );
       return;
     }
@@ -67,7 +70,10 @@ export class PromptCoordinator {
       // The tree item was built before a redial cleared the pending flag;
       // the daemon re-sets it on the next dial cycle.
       void vscode.window.showInformationMessage(
-        `portato: ${s.name}: no prompt is pending -- waiting for the next dial to re-offer it`,
+        vscode.l10n.t(
+          "portato: {0}: no prompt is pending -- waiting for the next dial to re-offer it",
+          s.name,
+        ),
       );
       return;
     }
@@ -75,14 +81,19 @@ export class PromptCoordinator {
       // A dialog for this exact key is already open. VS Code moves action
       // toasts into the notification center after their timeout, so the user
       // clicking here may not see it -- point at it instead of going silent.
-      void vscode.window.showInformationMessage(
-        `portato: ${s.name}: a prompt is already open -- see the notification center`,
-        "Show notifications",
-      ).then((action) => {
-        if (action !== undefined) {
-          void vscode.commands.executeCommand("notifications.showList");
-        }
-      });
+      void vscode.window
+        .showInformationMessage(
+          vscode.l10n.t(
+            "portato: {0}: a prompt is already open -- see the notification center",
+            s.name,
+          ),
+          vscode.l10n.t("Show notifications"),
+        )
+        .then((action) => {
+          if (action !== undefined) {
+            void vscode.commands.executeCommand("notifications.showList");
+          }
+        });
       return;
     }
     this.asked.delete(p.key);
@@ -98,9 +109,9 @@ export class PromptCoordinator {
       if (p.kind === "hostkey") {
         // Offer first, modal only on demand: a background SSE event must not
         // block the window with an unrequested modal.
-        const review = "Review...";
+        const review = vscode.l10n.t("Review...");
         const action = await vscode.window.showWarningMessage(
-          `Unknown SSH host key for ${p.detail} (tunnel ${s.name})`,
+          vscode.l10n.t("Unknown SSH host key for {0} (tunnel {1})", p.detail, s.name),
           review,
         );
         if (action !== review) return;
@@ -109,7 +120,9 @@ export class PromptCoordinator {
         return;
       }
       const label =
-        p.kind === "passphrase" ? "Enter passphrase" : "Enter password";
+        p.kind === "passphrase"
+          ? vscode.l10n.t("Enter passphrase")
+          : vscode.l10n.t("Enter password");
       // One action: an empty secret must be a deliberate, confirmed choice,
       // not a toast button that sits next to the main one.
       const action = await vscode.window.showInformationMessage(
@@ -133,11 +146,22 @@ export class PromptCoordinator {
         }
         const sendEmpty =
           p.kind === "passphrase"
-            ? "Send empty passphrase"
-            : "Send empty password";
+            ? vscode.l10n.t("Send empty passphrase")
+            : vscode.l10n.t("Send empty password");
+        // Two separate keys instead of interpolating p.kind: the enum value
+        // would land mid-sentence and no locale can inflect it.
+        const message =
+          p.kind === "passphrase"
+            ? vscode.l10n.t("Send an empty passphrase for {0}?", s.name)
+            : vscode.l10n.t("Send an empty password for {0}?", s.name);
         const pick = await vscode.window.showWarningMessage(
-          `Send an empty ${p.kind} for ${s.name}?`,
-          { modal: true, detail: "The tunnel treats an empty answer as an explicit empty secret." },
+          message,
+          {
+            modal: true,
+            detail: vscode.l10n.t(
+              "The tunnel treats an empty answer as an explicit empty secret.",
+            ),
+          },
           sendEmpty,
         );
         if (pick === sendEmpty) {
@@ -149,7 +173,7 @@ export class PromptCoordinator {
       // Network/server failure: allow a re-ask instead of wedging the dedupe.
       this.asked.delete(key);
       const msg = e instanceof Error ? e.message : String(e);
-      void vscode.window.showErrorMessage(`portato: ${s.name}: ${msg}`);
+      void vscode.window.showErrorMessage(vscode.l10n.t("portato: {0}: {1}", s.name, msg));
     } finally {
       this.inFlight.delete(key);
     }
@@ -159,11 +183,12 @@ export class PromptCoordinator {
     s: TuberStatus,
     p: { kind: PromptKind; detail: string; attempts: number },
   ): string {
-    const hint = p.attempts > 0 ? " (previous attempt failed)" : "";
+    const hint =
+      p.attempts > 0 ? vscode.l10n.t(" (previous attempt failed)") : "";
     if (p.kind === "passphrase") {
-      return `Passphrase needed for ${s.name} -- key ${p.detail}${hint}`;
+      return vscode.l10n.t("Passphrase needed for {0} -- key {1}{2}", s.name, p.detail, hint);
     }
-    return `Password needed for ${s.name} -- ${p.detail}${hint}`;
+    return vscode.l10n.t("Password needed for {0} -- {1}{2}", s.name, p.detail, hint);
   }
 }
 
@@ -173,8 +198,11 @@ export async function askPassphrase(
   identity: string,
 ): Promise<string | undefined> {
   return vscode.window.showInputBox({
-    title: `Identity passphrase -- tunnel ${s.name}`,
-    prompt: attempts > 0 ? "Wrong passphrase -- try again" : `Passphrase for ${identity}`,
+    title: vscode.l10n.t("Identity passphrase -- tunnel {0}", s.name),
+    prompt:
+      attempts > 0
+        ? vscode.l10n.t("Wrong passphrase -- try again")
+        : vscode.l10n.t("Passphrase for {0}", identity),
     password: true,
     ignoreFocusOut: true,
     // No min-length validation: an empty answer is handled as an explicit
@@ -184,18 +212,27 @@ export async function askPassphrase(
 
 export async function askPassword(s: TuberStatus, attempts: number, account: string): Promise<string | undefined> {
   return vscode.window.showInputBox({
-    title: `Password -- tunnel ${s.name}`,
-    prompt: attempts > 0 ? "Wrong password -- try again" : `Password for ${account}`,
+    title: vscode.l10n.t("Password -- tunnel {0}", s.name),
+    prompt:
+      attempts > 0
+        ? vscode.l10n.t("Wrong password -- try again")
+        : vscode.l10n.t("Password for {0}", account),
     password: true,
     ignoreFocusOut: true,
   });
 }
 
 export async function confirmHostKey(host: string, fingerprint: string | undefined): Promise<boolean> {
+  const accept = vscode.l10n.t("Accept");
   const pick = await vscode.window.showWarningMessage(
-    `Unknown SSH host key for ${host}`,
-    { modal: true, detail: fingerprint ? `Fingerprint: ${fingerprint}` : undefined },
-    "Accept",
+    vscode.l10n.t("Unknown SSH host key for {0}", host),
+    {
+      modal: true,
+      detail: fingerprint
+        ? vscode.l10n.t("Fingerprint: {0}", fingerprint)
+        : undefined,
+    },
+    accept,
   );
-  return pick === "Accept";
+  return pick === accept;
 }

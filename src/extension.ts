@@ -273,7 +273,7 @@ class PortatoController implements vscode.Disposable {
     value: string | undefined,
   ): Promise<void> {
     const client = this.client;
-    if (!client) throw new Error("daemon not connected");
+    if (!client) throw new Error(vscode.l10n.t("daemon not connected"));
     if (kind === "hostkey") await client.acceptHost(name);
     else if (kind === "passphrase") await client.setPassphrase(name, value ?? "");
     else await client.setPassword(name, value ?? "");
@@ -294,7 +294,9 @@ class PortatoController implements vscode.Disposable {
       for (const step of steps) await client.move(name, step);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      void vscode.window.showErrorMessage(`portato: ${name}: ${msg}`);
+      void vscode.window.showErrorMessage(
+        vscode.l10n.t("portato: {0}: {1}", name, msg),
+      );
     } finally {
       await this.refreshTubers();
     }
@@ -307,8 +309,9 @@ class PortatoController implements vscode.Disposable {
    * is active.
    */
   async filterTunnelsCommand(): Promise<void> {
+    const t = vscode.l10n.t;
     if (this.lastStatuses.length === 0) {
-      void vscode.window.showInformationMessage("portato: no tunnels to filter");
+      void vscode.window.showInformationMessage(t("portato: no tunnels to filter"));
       return;
     }
     const tags = [
@@ -316,16 +319,16 @@ class PortatoController implements vscode.Disposable {
         this.lastStatuses.flatMap((s) => s.tags ?? []).filter((t) => t.trim() !== ""),
       ),
     ].sort();
-    const byName = "Filter by name...";
-    const clear = "Clear filter";
+    const byName = t("Filter by name...");
+    const clear = t("Clear filter");
     const picks: (vscode.QuickPickItem & { filter?: TunnelFilter })[] = [
       ...tags.map((t) => ({ label: t, filter: { kind: "tag", value: t } as TunnelFilter })),
-      { label: byName, description: "substring on name or tag" },
+      { label: byName, description: t("substring on name or tag") },
       { label: clear },
     ];
     const pick = await vscode.window.showQuickPick(picks, {
-      title: "Filter tunnels",
-      placeHolder: "Show only matching tunnels (tags or names)",
+      title: t("Filter tunnels"),
+      placeHolder: t("Show only matching tunnels (tags or names)"),
     });
     if (!pick) return;
     if (pick.label === clear) {
@@ -335,8 +338,8 @@ class PortatoController implements vscode.Disposable {
     let filter = pick.filter;
     if (pick.label === byName) {
       const input = await vscode.window.showInputBox({
-        title: "Filter tunnels",
-        prompt: "Substring matched against tunnel names and tags",
+        title: t("Filter tunnels"),
+        prompt: t("Substring matched against tunnel names and tags"),
         ignoreFocusOut: true,
       });
       if (input === undefined) return;
@@ -346,7 +349,7 @@ class PortatoController implements vscode.Disposable {
     if (!filter) return;
     const shown = this.lastStatuses.filter((s) => matchesFilter(s, filter)).length;
     void vscode.window.showInformationMessage(
-      `portato: showing ${shown} of ${this.lastStatuses.length} tunnels`,
+      t("portato: showing {0} of {1} tunnels", shown, this.lastStatuses.length),
     );
   }
 
@@ -384,7 +387,7 @@ class PortatoController implements vscode.Disposable {
       );
       if (candidates.length === 0) {
         void vscode.window.showErrorMessage(
-          `portato: ${name}: no identity configured for this tunnel`,
+          vscode.l10n.t("portato: {0}: no identity configured for this tunnel", name),
         );
         return;
       }
@@ -399,8 +402,10 @@ class PortatoController implements vscode.Disposable {
         const picked = await vscode.window.showQuickPick(
           candidates.map((c) => ({ label: c.path, description: c.note, candidate: c })),
           {
-            title: `Identity for tunnel ${name}`,
-            placeHolder: "The daemon keys passphrases by the exact path",
+            title: vscode.l10n.t("Identity for tunnel {0}", name),
+            placeHolder: vscode.l10n.t(
+              "The daemon keys passphrases by the exact path",
+            ),
           },
         );
         candidate = picked?.candidate;
@@ -414,16 +419,16 @@ class PortatoController implements vscode.Disposable {
       let passphrase: string | undefined;
       for (;;) {
         passphrase = await vscode.window.showInputBox({
-          title: `Identity passphrase -- ${path}`,
-          prompt: `Passphrase to cache for ${path}`,
+          title: vscode.l10n.t("Identity passphrase -- {0}", path),
+          prompt: vscode.l10n.t("Passphrase to cache for {0}", path),
           password: true,
           ignoreFocusOut: true,
         });
         if (passphrase === undefined) return;
         if (passphrase !== "") break;
-        const send = "Store empty passphrase";
+        const send = vscode.l10n.t("Store empty passphrase");
         const pick = await vscode.window.showWarningMessage(
-          `Store an EMPTY passphrase for ${path}?`,
+          vscode.l10n.t("Store an EMPTY passphrase for {0}?", path),
           { modal: true },
           send,
         );
@@ -431,10 +436,12 @@ class PortatoController implements vscode.Disposable {
       }
       await client.setIdentity(path, passphrase);
       await this.refreshTubers();
-      void vscode.window.showInformationMessage(`portato: passphrase stored for ${path}`);
+      void vscode.window.showInformationMessage(
+        vscode.l10n.t("portato: passphrase stored for {0}", path),
+      );
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      void vscode.window.showErrorMessage(`portato: ${name}: ${msg}`);
+      void vscode.window.showErrorMessage(vscode.l10n.t("portato: {0}: {1}", name, msg));
     }
   }
 
@@ -452,24 +459,26 @@ class PortatoController implements vscode.Disposable {
       );
       if (candidates.length === 0) {
         void vscode.window.showErrorMessage(
-          `portato: ${name}: no identity configured for this tunnel`,
+          vscode.l10n.t("portato: {0}: no identity configured for this tunnel", name),
         );
         return;
       }
       const picked = await vscode.window.showQuickPick(
         candidates.map((c) => ({ label: c.path, description: c.note })),
         {
-          title: `Forget passphrase for tunnel ${name}`,
-          placeHolder: "The next dial will prompt again",
+          title: vscode.l10n.t("Forget passphrase for tunnel {0}", name),
+          placeHolder: vscode.l10n.t("The next dial will prompt again"),
         },
       );
       if (!picked) return;
       const path = picked.label;
       await client.forgetIdentity(path);
-      void vscode.window.showInformationMessage(`portato: passphrase forgotten for ${path}`);
+      void vscode.window.showInformationMessage(
+        vscode.l10n.t("portato: passphrase forgotten for {0}", path),
+      );
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      void vscode.window.showErrorMessage(`portato: ${name}: ${msg}`);
+      void vscode.window.showErrorMessage(vscode.l10n.t("portato: {0}: {1}", name, msg));
     }
   }
 
@@ -479,7 +488,9 @@ class PortatoController implements vscode.Disposable {
       await this.connect();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      void vscode.window.showErrorMessage(`portato: failed to start daemon: ${msg}`);
+      void vscode.window.showErrorMessage(
+        vscode.l10n.t("portato: failed to start daemon: {0}", msg),
+      );
     }
   }
 
@@ -497,10 +508,12 @@ class PortatoController implements vscode.Disposable {
       const out = await stopDaemon();
       this.teardown();
       this.schedulePoll();
-      if (out) void vscode.window.showInformationMessage(`portato: ${out}`);
+      if (out) void vscode.window.showInformationMessage(vscode.l10n.t("portato: {0}", out));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      void vscode.window.showErrorMessage(`portato: failed to stop daemon: ${msg}`);
+      void vscode.window.showErrorMessage(
+        vscode.l10n.t("portato: failed to stop daemon: {0}", msg),
+      );
     }
   }
 
@@ -518,7 +531,9 @@ class PortatoController implements vscode.Disposable {
       await this.refreshTubers();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      void vscode.window.showErrorMessage(`portato: ${name}: ${msg}`);
+      void vscode.window.showErrorMessage(
+        vscode.l10n.t("portato: {0}: {1}", name, msg),
+      );
     }
   }
 
@@ -538,20 +553,24 @@ class PortatoController implements vscode.Disposable {
     const client = this.client;
     const name = item?.status.name;
     if (!client || !name) return;
-    const del = "Delete";
+    const del = vscode.l10n.t("Delete");
     const pick = await vscode.window.showWarningMessage(
-      `Delete tunnel ${name}?`,
-      { modal: true, detail: "The daemon removes it from config.yaml." },
+      vscode.l10n.t("Delete tunnel {0}?", name),
+      { modal: true, detail: vscode.l10n.t("The daemon removes it from config.yaml.") },
       del,
     );
     if (pick !== del) return;
     try {
       await client.deleteTuber(name);
       await this.refreshTubers();
-      void vscode.window.showInformationMessage(`portato: tunnel ${name} deleted`);
+      void vscode.window.showInformationMessage(
+        vscode.l10n.t("portato: tunnel {0} deleted", name),
+      );
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      void vscode.window.showErrorMessage(`portato: ${name}: ${msg}`);
+      void vscode.window.showErrorMessage(
+        vscode.l10n.t("portato: {0}: {1}", name, msg),
+      );
     }
   }
 
@@ -562,11 +581,13 @@ class PortatoController implements vscode.Disposable {
     try {
       await client.reload();
       await this.refreshTubers();
-      void vscode.window.showInformationMessage("portato: config reloaded");
+      void vscode.window.showInformationMessage(vscode.l10n.t("portato: config reloaded"));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       // applyReload answers 500 with the validation error in {"error"}.
-      void vscode.window.showErrorMessage(`portato: reload failed: ${msg}`);
+      void vscode.window.showErrorMessage(
+        vscode.l10n.t("portato: reload failed: {0}", msg),
+      );
     }
   }
 
@@ -574,7 +595,7 @@ class PortatoController implements vscode.Disposable {
     // sseLive is owned by onStreamChange only; Refresh and the poll timer
     // call updateStatusBar("connecting") while a stream may already be live.
     const connected = this.lastStatuses.filter(isActive).length;
-    const r = renderBar(state, this.socket, connected);
+    const r = renderBar(state, this.socket, connected, vscode.l10n.t);
     // Skip no-op writes: repeated identical text/tooltip still cross into
     // the renderer (the poll loop and teardown hit this every 10 s).
     if (this.statusBar.text !== r.text) this.statusBar.text = r.text;

@@ -10,6 +10,8 @@
 //     plus an always-empty input; the submit decides set/clear/keep from
 //     the flag and whether the user typed a value.
 
+import { identityT, type Translate } from "./i18n";
+
 export type TuberTypeChoice = "local" | "remote" | "dynamic";
 export type PasswordAuthChoice = "inherit" | "on" | "off";
 
@@ -90,11 +92,14 @@ export function prefillFrom(raw: Record<string, unknown> | undefined): TuberForm
   };
 }
 
-/** Client-side validation; returns an error message or null. */
-export function validateFields(f: TuberFormFields): string | null {
-  if (f.name.trim() === "") return "Name is required";
+/**
+ * Client-side validation; returns an error message or null. `t` localizes
+ * the messages (identity default keeps the module vscode-free for tests).
+ */
+export function validateFields(f: TuberFormFields, t: Translate = identityT): string | null {
+  if (f.name.trim() === "") return t("Name is required");
   if (f.type !== "local" && f.type !== "remote" && f.type !== "dynamic") {
-    return "Invalid tunnel type";
+    return t("Invalid tunnel type");
   }
   return null;
 }

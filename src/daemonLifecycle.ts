@@ -130,7 +130,10 @@ export async function startDaemon(): Promise<string> {
       const log = await readLaunchLog(state.logOffset);
       throw new Error(
         log ||
-          `failed to run "${binaryPath()}" -- check the portato.binaryPath setting`,
+          vscode.l10n.t(
+            'failed to run "{0}" -- check the portato.binaryPath setting',
+            binaryPath(),
+          ),
       );
     }
     const socket = await resolveLiveSocket();
@@ -138,7 +141,7 @@ export async function startDaemon(): Promise<string> {
     if (Date.now() > deadline) {
       const log = await readLaunchLog(state.logOffset);
       throw new Error(
-        `daemon did not become ready within ${READINESS_TIMEOUT_MS / 1000}s${log ? `: ${log}` : ""}`,
+        vscode.l10n.t("daemon did not become ready within {0}s{1}", READINESS_TIMEOUT_MS / 1000, log ? `: ${log}` : ""),
       );
     }
     await new Promise((r) => setTimeout(r, READINESS_POLL_MS));

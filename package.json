@@ -1,7 +1,7 @@
 {
   "name": "portato-vscode",
   "displayName": "Portato",
-  "description": "VS Code client for the Portato daemon -- manage SSH port-forwarding tunnels from the sidebar",
+  "description": "%extension.description%",
   "version": "0.0.1",
   "publisher": "portuber",
   "private": true,
@@ -30,99 +30,99 @@
       "portato": [
         {
           "id": "portatoTunnels",
-          "name": "Tunnels"
+          "name": "%view.tunnels%"
         }
       ]
     },
     "commands": [
       {
         "command": "portato.refresh",
-        "title": "Refresh",
+        "title": "%cmd.refresh.title%",
         "icon": "$(refresh)"
       },
       {
         "command": "portato.startDaemon",
-        "title": "Start Daemon",
+        "title": "%cmd.startDaemon.title%",
         "icon": "$(play)"
       },
       {
         "command": "portato.stopDaemon",
-        "title": "Stop Daemon",
+        "title": "%cmd.stopDaemon.title%",
         "icon": "$(debug-stop)"
       },
       {
         "command": "portato.enable",
-        "title": "Enable Tunnel",
+        "title": "%cmd.enable.title%",
         "icon": "$(debug-start)"
       },
       {
         "command": "portato.disable",
-        "title": "Disable Tunnel",
+        "title": "%cmd.disable.title%",
         "icon": "$(debug-stop)"
       },
       {
         "command": "portato.restart",
-        "title": "Restart Tunnel",
+        "title": "%cmd.restart.title%",
         "icon": "$(debug-restart)"
       },
       {
         "command": "portato.answerPrompt",
-        "title": "Answer Prompt",
+        "title": "%cmd.answerPrompt.title%",
         "icon": "$(key)"
       },
       {
         "command": "portato.showLogs",
-        "title": "Show Logs",
+        "title": "%cmd.showLogs.title%",
         "icon": "$(output)"
       },
       {
         "command": "portato.showTuberLogs",
-        "title": "Show Tunnel Logs",
+        "title": "%cmd.showTuberLogs.title%",
         "icon": "$(output)"
       },
       {
         "command": "portato.setLogLevel",
-        "title": "Set Log Level...",
+        "title": "%cmd.setLogLevel.title%",
         "icon": "$(filter)"
       },
       {
         "command": "portato.storeIdentity",
-        "title": "Store Identity Passphrase",
+        "title": "%cmd.storeIdentity.title%",
         "icon": "$(key)"
       },
       {
         "command": "portato.forgetIdentity",
-        "title": "Forget Identity Passphrase",
+        "title": "%cmd.forgetIdentity.title%",
         "icon": "$(key)"
       },
       {
         "command": "portato.filterTunnels",
-        "title": "Filter Tunnels...",
+        "title": "%cmd.filterTunnels.title%",
         "icon": "$(filter)"
       },
       {
         "command": "portato.clearFilter",
-        "title": "Clear Tunnel Filter",
+        "title": "%cmd.clearFilter.title%",
         "icon": "$(clear-all)"
       },
       {
         "command": "portato.addTunnel",
-        "title": "Add Tunnel",
+        "title": "%cmd.addTunnel.title%",
         "icon": "$(add)"
       },
       {
         "command": "portato.editTunnel",
-        "title": "Edit Tunnel",
+        "title": "%cmd.editTunnel.title%",
         "icon": "$(edit)"
       },
       {
         "command": "portato.deleteTunnel",
-        "title": "Delete Tunnel",
+        "title": "%cmd.deleteTunnel.title%",
         "icon": "$(trash)"
       },
       {
         "command": "portato.reloadConfig",
-        "title": "Reload Config",
+        "title": "%cmd.reloadConfig.title%",
         "icon": "$(sync)"
       }
     ],
@@ -270,17 +270,17 @@
         "portato.binaryPath": {
           "type": "string",
           "default": "portato",
-          "markdownDescription": "Path to the `portato` binary. Set an absolute path if VS Code was launched from the Dock (GUI apps on macOS do not inherit shell `PATH`)."
+          "markdownDescription": "%cfg.binaryPath.desc%"
         },
         "portato.socketPath": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Override the daemon socket path. When empty, discovery mirrors the Go client: `PORTATO_SOCKET` env -> the `daemon.socket` marker in the portato config dir -> the runtime socket path."
+          "markdownDescription": "%cfg.socketPath.desc%"
         },
         "portato.groupByTag": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Group tunnels in the sidebar by their first tag. Drag-and-drop reorder is disabled while grouping or a filter is active."
+          "markdownDescription": "%cfg.groupByTag.desc%"
         }
       }
     }

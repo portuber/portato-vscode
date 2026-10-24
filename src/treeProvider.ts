@@ -31,7 +31,7 @@ export const TUNNEL_DRAG_MIME = "application/vnd.code.tree.portatotunnels";
 
 /** Zero time (RFC3339) means "never connected" per the daemon contract. */
 function connectedAtLabel(iso: string): string {
-  if (iso.startsWith("0001-01-01")) return "never";
+  if (iso.startsWith("0001-01-01")) return vscode.l10n.t("never");
   const d = new Date(iso);
   return isNaN(d.getTime()) ? iso : d.toLocaleString();
 }
@@ -128,32 +128,33 @@ export class TunnelsTreeProvider
   }
 
   private roots(): vscode.TreeItem[] {
+    const t = vscode.l10n.t;
     if (!this.daemonSocket) {
       const item = new vscode.TreeItem(
-        "Daemon not running",
+        t("Daemon not running"),
         vscode.TreeItemCollapsibleState.None,
       );
-      item.description = "start it to manage tunnels";
+      item.description = t("start it to manage tunnels");
       item.iconPath = new vscode.ThemeIcon("debug-disconnect");
       item.command = {
         command: "portato.startDaemon",
-        title: "Start Daemon",
+        title: t("Start Daemon"),
       };
       return [item];
     }
     if (this.statuses === undefined) return [];
     if (this.statuses.length === 0) {
       const item = new vscode.TreeItem(
-        "No tunnels configured",
+        t("No tunnels configured"),
         vscode.TreeItemCollapsibleState.None,
       );
-      item.description = "add one in the portato config";
+      item.description = t("add one in the portato config");
       item.iconPath = new vscode.ThemeIcon("info");
       return [item];
     }
     const visible = this.visible();
     if (visible.length === 0) {
-      const item = new vscode.TreeItem("No tunnels match", vscode.TreeItemCollapsibleState.None);
+      const item = new vscode.TreeItem(t("No tunnels match"), vscode.TreeItemCollapsibleState.None);
       item.iconPath = new vscode.ThemeIcon("info");
       return [item];
     }
@@ -212,7 +213,10 @@ export class TunnelsTreeProvider
 
 export class TagGroupItem extends vscode.TreeItem {
   constructor(readonly tag: string) {
-    super(tag === "" ? "untagged" : tag, vscode.TreeItemCollapsibleState.Expanded);
+    super(
+      tag === "" ? vscode.l10n.t("untagged") : tag,
+      vscode.TreeItemCollapsibleState.Expanded,
+    );
     this.id = `tag:${tag}`;
     this.contextValue = "tagGroup";
     this.iconPath = new vscode.ThemeIcon("folder");
@@ -237,9 +241,10 @@ export class TuberItem extends vscode.TreeItem {
     pendingHosts?: ReadonlyMap<string, string>,
     tag?: string,
   ): TuberItem {
+    const t = vscode.l10n.t;
     const item = new TuberItem(s, s.name, tag);
     const state = s.state;
-    item.description = `${endpoint(s)} -- ${state}${s.error ? " (see tooltip)" : ""}`;
+    item.description = `${endpoint(s)} -- ${state}${s.error ? t(" (see tooltip)") : ""}`;
     item.iconPath = new vscode.ThemeIcon(STATE_ICONS[state]);
     // A tuber blocked on a prompt gets its own contextValue so package.json
     // can offer portato.answerPrompt; other menu when-clauses (!= off) keep
@@ -253,22 +258,22 @@ export class TuberItem extends vscode.TreeItem {
       // attempts, so the notification alone can never re-ask).
       item.command = {
         command: "portato.answerPrompt",
-        title: "Answer Prompt",
+        title: t("Answer Prompt"),
         arguments: [item],
       };
     }
     const lines = [
-      `Name: ${s.name}`,
-      `Type: ${s.type}`,
-      `Endpoint: ${endpoint(s)}`,
-      `State: ${state}`,
-      `Connected at: ${connectedAtLabel(s.connected_at)}`,
+      t("Name: {0}", s.name),
+      t("Type: {0}", s.type),
+      t("Endpoint: {0}", endpoint(s)),
+      t("State: {0}", state),
+      t("Connected at: {0}", connectedAtLabel(s.connected_at)),
     ];
-    if (s.tags?.length) lines.push(`Tags: ${s.tags.join(", ")}`);
-    if (s.error) lines.push(`Error: ${s.error}`);
-    if (s.pending_host) lines.push(`Pending host key: ${s.pending_host}`);
-    if (s.pending_passphrase) lines.push(`Pending passphrase: ${s.pending_passphrase}`);
-    if (s.pending_password) lines.push(`Pending password: ${s.pending_password}`);
+    if (s.tags?.length) lines.push(t("Tags: {0}", s.tags.join(", ")));
+    if (s.error) lines.push(t("Error: {0}", s.error));
+    if (s.pending_host) lines.push(t("Pending host key: {0}", s.pending_host));
+    if (s.pending_passphrase) lines.push(t("Pending passphrase: {0}", s.pending_passphrase));
+    if (s.pending_password) lines.push(t("Pending password: {0}", s.pending_password));
     item.tooltip = lines.join("\n");
     return item;
   }

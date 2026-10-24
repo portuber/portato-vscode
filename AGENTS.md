@@ -6,13 +6,17 @@ and are never reimplemented here.
 
 ## Project state
 
-Part 1 (MVP) is implemented and reviewed: socket discovery, daemon client,
-SSE, tunnels tree, prompts, daemon lifecycle, controller wiring, unit tests
-plus an optional integration suite against a disposable real daemon
-(`PORTATO_BINARY` / `/opt/homebrew/bin/portato`). Review fixes from the
-external reviews are in; next per `~/.opencode/plan/portato-vscode.md`: part 2
-(logs UI, tunnel CRUD, l10n) -- part 1 ships plain English strings on purpose;
-wrapping them in `vscode.l10n` / `package.nls.json` is part 2 work.
+Parts 1 and 2 are implemented and reviewed. Part 1: socket discovery, daemon
+client, SSE, tunnels tree, prompts, daemon lifecycle, controller wiring, unit
+tests plus an integration suite against a disposable real daemon
+(`PORTATO_BINARY` / `/opt/homebrew/bin/portato`). Part 2: logs output channel
+(poll + tail-anchored dedup), tunnel CRUD via a webview form with conflict
+check, identity passphrase store/forget, drag-and-drop reorder (the daemon's
+move swaps, so inserts are chains of +/-1), tag grouping + filter, manual
+config Reload (the daemon watches its own config), and l10n -- every UI
+string goes through `vscode.l10n.t` / `package.nls.json` (parity is pinned
+by `src/test/nls.test.ts`; pure modules take an injected translator with an
+identity default, see `renderBar` / `validateFields`).
 The extension is unix-only (macOS/Linux); the daemon's Windows named pipe is
 not implemented (README "Platform support").
 
@@ -154,5 +158,9 @@ src/
 - Conventional Commits (`feat(<scope>): ...`, `fix(...)`, `chore(...)`); non-trivial
   commits carry a body saying what and why.
 - English in the repo; UI strings via `vscode.l10n` / `package.nls.json`.
+  Runtime strings are extraction-ready literals inside `t(...)` calls (no
+  key indirection: the bundle extractor only sees literals); the `l10n/`
+  bundle directory and the package.json `"l10n"` field land together with
+  the first actual translation.
 - No commits or pushes without explicit permission.
 - Task plan: `~/.opencode/plan/portato-vscode.md`.

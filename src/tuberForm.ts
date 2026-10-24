@@ -22,41 +22,106 @@ import {
 //     empty means "keep".
 // Security: one nonce-guarded inline script, CSP default-src 'none', every
 // prefill value HTML-escaped; the form talks to the extension exclusively
-// via postMessage. Strings live in S below so part 2's l10n pass can swap
-// the table for vscode.l10n.t in one place.
+// via postMessage. Strings go through vscode.l10n.t in the S table -- the
+// single place to touch when adding a locale bundle.
 
+// Translated at ACCESS time, never at module load: the language bundle
+// loads asynchronously alongside the extension host, so top-level
+// vscode.l10n.t calls would resolve before any bundle exists and freeze
+// the form in English forever. Getters (and the function entries) keep
+// every call site a plain S.x while staying lazy.
 export const S = {
-  addTitle: "Add tunnel",
-  editTitle: (name: string) => `Edit tunnel: ${name}`,
-  errNotFound: (name: string) => `portato: tunnel ${name} not found in the daemon config`,
-  errNoClient: "portato: daemon not connected",
-  errConflictTitle: "The daemon's config changed since this form opened",
-  errConflictDetail: "Reload the form to see the current values, or overwrite them with yours.",
-  actionReload: "Reload form",
-  actionOverwrite: "Overwrite",
-  msgAdded: (name: string) => `portato: tunnel ${name} added`,
-  msgUpdated: (name: string) => `portato: tunnel ${name} updated`,
-  msgUnchanged: "portato: nothing to save -- the form matches the daemon config",
-  msgReloaded: "portato: config reloaded",
-  labelName: "Name",
-  labelType: "Type",
-  labelLocal: "Local address",
-  labelRemote: "Remote address",
-  labelSsh: "SSH target",
-  labelIdentity: "Identity",
-  labelEnabled: "Enabled",
-  labelTags: "Tags (comma separated)",
-  labelJump: "Jump host",
-  labelPasswordAuth: "SSH password auth",
-  paInherit: "Inherit (defaults)",
-  paOn: "On",
-  paOff: "Off",
-  labelSocks5User: "SOCKS5 user",
-  labelSocks5Password: "SOCKS5 password",
-  socksSetHint: "A password is currently set. Type to replace it.",
-  socksClear: "Clear stored password",
-  actionSave: "Save",
-  actionCancel: "Cancel",
+  get addTitle(): string {
+    return vscode.l10n.t("Add tunnel");
+  },
+  get docTitle(): string {
+    return vscode.l10n.t("Portato tunnel");
+  },
+  editTitle: (name: string) => vscode.l10n.t("Edit tunnel: {0}", name),
+  errNotFound: (name: string) =>
+    vscode.l10n.t("portato: tunnel {0} not found in the daemon config", name),
+  get errNoClient(): string {
+    return vscode.l10n.t("portato: daemon not connected");
+  },
+  get errConflictTitle(): string {
+    return vscode.l10n.t("The daemon's config changed since this form opened");
+  },
+  get errConflictDetail(): string {
+    return vscode.l10n.t(
+      "Reload the form to see the current values, or overwrite them with yours.",
+    );
+  },
+  get actionReload(): string {
+    return vscode.l10n.t("Reload form");
+  },
+  get actionOverwrite(): string {
+    return vscode.l10n.t("Overwrite");
+  },
+  msgAdded: (name: string) => vscode.l10n.t("portato: tunnel {0} added", name),
+  msgUpdated: (name: string) => vscode.l10n.t("portato: tunnel {0} updated", name),
+  get msgUnchanged(): string {
+    return vscode.l10n.t("portato: nothing to save -- the form matches the daemon config");
+  },
+  get msgReloaded(): string {
+    return vscode.l10n.t("portato: config reloaded");
+  },
+  get labelName(): string {
+    return vscode.l10n.t("Name");
+  },
+  get labelType(): string {
+    return vscode.l10n.t("Type");
+  },
+  get labelLocal(): string {
+    return vscode.l10n.t("Local address");
+  },
+  get labelRemote(): string {
+    return vscode.l10n.t("Remote address");
+  },
+  get labelSsh(): string {
+    return vscode.l10n.t("SSH target");
+  },
+  get labelIdentity(): string {
+    return vscode.l10n.t("Identity");
+  },
+  get labelEnabled(): string {
+    return vscode.l10n.t("Enabled");
+  },
+  get labelTags(): string {
+    return vscode.l10n.t("Tags (comma separated)");
+  },
+  get labelJump(): string {
+    return vscode.l10n.t("Jump host");
+  },
+  get labelPasswordAuth(): string {
+    return vscode.l10n.t("SSH password auth");
+  },
+  get paInherit(): string {
+    return vscode.l10n.t("Inherit (defaults)");
+  },
+  get paOn(): string {
+    return vscode.l10n.t("On");
+  },
+  get paOff(): string {
+    return vscode.l10n.t("Off");
+  },
+  get labelSocks5User(): string {
+    return vscode.l10n.t("SOCKS5 user");
+  },
+  get labelSocks5Password(): string {
+    return vscode.l10n.t("SOCKS5 password");
+  },
+  get socksSetHint(): string {
+    return vscode.l10n.t("A password is currently set. Type to replace it.");
+  },
+  get socksClear(): string {
+    return vscode.l10n.t("Clear stored password");
+  },
+  get actionSave(): string {
+    return vscode.l10n.t("Save");
+  },
+  get actionCancel(): string {
+    return vscode.l10n.t("Cancel");
+  },
 };
 
 export interface TuberFormDeps {
@@ -102,7 +167,9 @@ export class TuberFormController {
         | RawTuber
         | undefined;
     } catch (e) {
-      void vscode.window.showErrorMessage(`portato: ${name}: ${errText(e)}`);
+      void vscode.window.showErrorMessage(
+        vscode.l10n.t("portato: {0}: {1}", name, errText(e)),
+      );
       return;
     }
     if (!raw) {
@@ -165,7 +232,7 @@ export class TuberFormController {
       this.postTo(panel, { type: "error", message: S.errNoClient });
       return;
     }
-    const invalid = validateFields(msg.fields);
+    const invalid = validateFields(msg.fields, vscode.l10n.t);
     if (invalid) {
       this.postTo(panel, { type: "error", message: invalid });
       return;
@@ -267,12 +334,12 @@ function buildFormHtml(
   const sel = (want: string, got: string) => (want === got ? " selected" : "");
   const ck = (on: boolean) => (on ? " checked" : "");
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${esc(vscode.env.language)}">
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy"
   content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
-<title>portato tunnel</title>
+<title>${S.docTitle}</title>
 <style>
 body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); padding: 0 16px 16px; }
 .row { margin: 10px 0; }

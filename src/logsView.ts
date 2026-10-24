@@ -26,15 +26,20 @@ const LEVEL_RANK: Record<LogLevel, number> = {
   error: 8,
 };
 
-const LEVEL_PICKS: { level: LogLevel; label: string }[] = [
-  { level: "debug", label: "Debug" },
-  { level: "info", label: "Info" },
-  { level: "warning", label: "Warning" },
-  { level: "error", label: "Error" },
+// Labels translate at access time, as literal vscode.l10n.t arguments --
+// the l10n bundle extractor only collects string literals inside t(...)
+// calls, so t(someKey) would silently miss the bundle.
+const LEVEL_PICKS: { level: LogLevel; label: () => string }[] = [
+  { level: "debug", label: () => vscode.l10n.t("Debug") },
+  { level: "info", label: () => vscode.l10n.t("Info") },
+  { level: "warning", label: () => vscode.l10n.t("Warning") },
+  { level: "error", label: () => vscode.l10n.t("Error") },
 ];
 
-const GAP_MARKER =
-  "--- earlier log entries were skipped (ring rotated or daemon restarted) ---";
+/** Localized at render time: the marker must follow the UI locale. */
+function gapMarker(): string {
+  return vscode.l10n.t("--- earlier log entries were skipped (ring rotated or daemon restarted) ---");
+}
 
 /**
  * Marker kept in the buffer where a ring gap happened, so it survives
@@ -126,7 +131,7 @@ export class LogsView implements vscode.Disposable {
 
   private render(): void {
     const lines = this.visible().map((i) =>
-      i === GAP_MARK ? GAP_MARKER : formatLogEntry(i),
+      i === GAP_MARK ? gapMarker() : formatLogEntry(i),
     );
     this.channel.replace(lines.join("\n") + (lines.length ? "\n" : ""));
     this.bufferedLines = lines.length;
@@ -165,7 +170,7 @@ export class LogsView implements vscode.Disposable {
         this.render();
       } else {
         if (gap) {
-          this.channel.appendLine(GAP_MARKER);
+          this.channel.appendLine(gapMarker());
           this.bufferedLines += 1;
         }
         for (const e of entries) {
@@ -185,12 +190,14 @@ export class LogsView implements vscode.Disposable {
 
 /** Quick-pick for the view-title "Set Log Level..." command. */
 export async function askLogLevel(current: LogLevel): Promise<LogLevel | undefined> {
+  const t = vscode.l10n.t;
   const pick = await vscode.window.showQuickPick(
     LEVEL_PICKS.map((p) => ({
-      ...p,
-      description: p.level === current ? "current" : undefined,
+      level: p.level,
+      label: p.label(),
+      description: p.level === current ? t("current") : undefined,
     })),
-    { title: "Portato Logs: minimum level", placeHolder: "Show entries at or above" },
+    { title: t("Portato Logs: minimum level"), placeHolder: t("Show entries at or above") },
   );
   return pick?.level;
 }
