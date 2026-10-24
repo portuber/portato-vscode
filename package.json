@@ -69,6 +69,21 @@
         "command": "portato.answerPrompt",
         "title": "Answer Prompt",
         "icon": "$(key)"
+      },
+      {
+        "command": "portato.showLogs",
+        "title": "Show Logs",
+        "icon": "$(output)"
+      },
+      {
+        "command": "portato.showTuberLogs",
+        "title": "Show Tunnel Logs",
+        "icon": "$(output)"
+      },
+      {
+        "command": "portato.setLogLevel",
+        "title": "Set Log Level...",
+        "icon": "$(filter)"
       }
     ],
     "menus": {
@@ -76,20 +91,30 @@
         {
           "command": "portato.startDaemon",
           "when": "view == portatoTunnels && !portato:daemonRunning",
-          "group": "navigation"
+          "group": "navigation@2"
         },
         {
           "command": "portato.stopDaemon",
           "when": "view == portatoTunnels && portato:daemonRunning",
-          "group": "navigation"
+          "group": "navigation@2"
         },
         {
           "command": "portato.refresh",
           "when": "view == portatoTunnels",
-          "group": "navigation"
+          "group": "navigation@0"
+        },
+        {
+          "command": "portato.showLogs",
+          "when": "view == portatoTunnels",
+          "group": "navigation@1"
+        },
+        {
+          "command": "portato.setLogLevel",
+          "when": "view == portatoTunnels",
+          "group": "navigation@3"
         }
       ],
-      "view/item": [
+      "view/item/context": [
         {
           "command": "portato.enable",
           "when": "view == portatoTunnels && viewItem == off",
@@ -109,6 +134,11 @@
           "command": "portato.answerPrompt",
           "when": "view == portatoTunnels && viewItem == prompting",
           "group": "inline@1"
+        },
+        {
+          "command": "portato.showTuberLogs",
+          "when": "view == portatoTunnels && viewItem =~ /^(off|connecting|connected|reconnecting|error|prompting)$/",
+          "group": "1_tunnels"
         }
       ],
       "commandPalette": [
@@ -126,6 +156,10 @@
         },
         {
           "command": "portato.answerPrompt",
+          "when": "false"
+        },
+        {
+          "command": "portato.showTuberLogs",
           "when": "false"
         }
       ]

@@ -3,6 +3,7 @@ import type { Readable } from "node:stream";
 import { DaemonClient, probeSocket } from "./daemonClient";
 import { resolveSocketPath } from "./discovery";
 import { settingOverride, startDaemon, stopDaemon } from "./daemonLifecycle";
+import { askLogLevel, LogsView } from "./logsView";
 import { PromptCoordinator } from "./prompts";
 import { SseStream } from "./sse";
 import { renderBar, contextSend, type BarState } from "./statusBar";
@@ -31,6 +32,12 @@ class PortatoController implements vscode.Disposable {
   );
   private readonly coordinator: PromptCoordinator;
   private readonly sse: SseStream;
+  /**
+   * Polls GET /logs into the "Portato Logs" output channel. Started on a
+   * proven connection, stopped on disconnect; the ring has no SSE events,
+   * so polling is the only freshness mechanism.
+   */
+  private readonly logs = new LogsView(() => this.client);
 
   private client: DaemonClient | undefined;
   /** The client backing the live SSE stream; destroyed once the stream dies. */
@@ -54,7 +61,11 @@ class PortatoController implements vscode.Disposable {
         onSignal: () => void this.refreshTubers(),
         onStreamChange: (open) => {
           this.sseLive = open;
-          if (!open) {
+          if (open) {
+            // The stream recovered on its own (daemon restart, hiccup):
+            // resume log polling too, not only after an explicit connect().
+            this.logs.start();
+          } else {
             // The stream died: its client's keep-alive sockets are no longer
             // needed unless the client is still the current API client.
             if (this.streamClient && this.streamClient !== this.client) {
@@ -136,6 +147,7 @@ class PortatoController implements vscode.Disposable {
       }
       if (moveStream) this.sse.stop();
       this.sse.start();
+      this.logs.start();
     } catch {
       this.teardown();
       this.schedulePoll();
@@ -149,12 +161,14 @@ class PortatoController implements vscode.Disposable {
   private adoptClient(client: DaemonClient): void {
     const prev = this.client;
     this.client = client;
+    if (this.socket !== client.socketPath) this.logs.reset();
     this.socket = client.socketPath;
     if (prev && prev !== client && prev !== this.streamClient) prev.destroy();
   }
 
   private teardown(): void {
     this.sse.stop();
+    this.logs.stop();
     if (this.streamClient && this.streamClient !== this.client) {
       this.streamClient.destroy();
     }
@@ -209,6 +223,7 @@ class PortatoController implements vscode.Disposable {
   /** Disconnected presentation without tearing the SSE reconnect loop down. */
   private showDaemonGone(): void {
     this.lastStatuses = [];
+    this.logs.stop();
     this.tree.setDaemonState(undefined);
     this.updateStatusBar("disconnected");
   }
@@ -275,6 +290,15 @@ class PortatoController implements vscode.Disposable {
     }
   }
 
+  showLogsCommand(name?: string): void {
+    this.logs.show(name);
+  }
+
+  async setLogLevelCommand(): Promise<void> {
+    const level = await askLogLevel(this.logs.getMinLevel());
+    if (level !== undefined) this.logs.setMinLevel(level);
+  }
+
   async stopDaemonCommand(): Promise<void> {
     try {
       const out = await stopDaemon();
@@ -331,6 +355,7 @@ class PortatoController implements vscode.Disposable {
   dispose(): void {
     this.disposed = true;
     clearTimeout(this.pollTimer);
+    this.logs.dispose();
     this.teardown();
     this.statusBar.dispose();
   }
@@ -362,6 +387,13 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.commands.registerCommand("portato.answerPrompt", (item?: TuberItem) =>
       controller.answerPromptCommand(item),
+    ),
+    vscode.commands.registerCommand("portato.showLogs", () => controller.showLogsCommand()),
+    vscode.commands.registerCommand("portato.showTuberLogs", (item?: TuberItem) =>
+      controller.showLogsCommand(item?.status.name),
+    ),
+    vscode.commands.registerCommand("portato.setLogLevel", () =>
+      controller.setLogLevelCommand(),
     ),
   ];
 

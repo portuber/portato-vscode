@@ -64,6 +64,8 @@ src/
   daemonClient.ts     HTTP over unix socket, token transport, 401 retry
   sse.ts              SSE parser for /events: signal frames, heartbeat, reconnect
   statusBar.ts        pure status-bar rendering + context-key send decisions
+  logDedup.ts         LogTail ring diff (tail-anchored), level rank, line format (pure)
+  logsView.ts         "Portato Logs" output channel: poll /logs, filter, min level
   treeProvider.ts     TreeDataProvider: five states, actions
   prompts.ts          passphrase / password / host-key prompts
   daemonLifecycle.ts  detached `portato daemon` spawn, readiness via /healthz
