@@ -3,10 +3,10 @@ import type { Readable } from "node:stream";
 // SSE consumer for GET /events over the unix socket.
 //
 // Protocol facts (internal/daemon/server.go, handleEvents):
-//   - every frame is a signal-only `data: {}` — no payload; the reaction is
+//   - every frame is a signal-only `data: {}` -- no payload; the reaction is
 //     to re-fetch GET /tubers
 //   - the first frame arrives immediately on connect, so it also drives the
-//     initial load — no separate initial fetch is needed
+//     initial load -- no separate initial fetch is needed
 //   - a `: heartbeat` comment every 15 s keeps the stream alive; treat
 //     >45 s of silence as a dead stream
 //   - log changes do NOT produce events
@@ -17,7 +17,7 @@ import type { Readable } from "node:stream";
 // on every reconnect (it rebuilds DaemonClient from discovery each time).
 
 export interface SseEvents {
-  /** Debounced signal — re-fetch GET /tubers. */
+  /** Debounced signal -- re-fetch GET /tubers. */
   onSignal(): void;
   /** Stream opened/closed (e.g. to show a "live" indicator). */
   onStreamChange?(open: boolean): void;
@@ -27,7 +27,7 @@ export interface SseDeps {
   /**
    * Opens (or re-opens) GET /events. Must resolve with the raw byte stream
    * and reject when the HTTP call itself fails (connect refused, >=400).
-   * Called again on every reconnect — the caller may re-run discovery and
+   * Called again on every reconnect -- the caller may re-run discovery and
    * rebuild the client/token between calls.
    */
   open(): Promise<Readable>;
@@ -121,9 +121,9 @@ export class SseStream {
       this.resetWatchdog(gen);
       await this.pump(stream, gen);
     } catch {
-      // Connect refused / HTTP error / header timeout — reconnect below.
+      // Connect refused / HTTP error / header timeout -- reconnect below.
     } finally {
-      // A stale watchdog must not destroy the NEXT connection's stream —
+      // A stale watchdog must not destroy the NEXT connection's stream --
       // and a stale generation must not clear the CURRENT one's watchdog.
       if (gen === this.generation) clearTimeout(this.watchdog);
       if (this.running && gen === this.generation) {
@@ -147,12 +147,12 @@ export class SseStream {
         for (const line of lines) this.handleLine(line, gen);
       }
     } catch {
-      // Stream error or watchdog destroy — reconnect below.
+      // Stream error or watchdog destroy -- reconnect below.
     }
   }
 
   private handleLine(line: string, gen: number): void {
-    // ANY traffic — signal frames and `: heartbeat` comments alike — proves
+    // ANY traffic -- signal frames and `: heartbeat` comments alike -- proves
     // the stream is alive, so it always resets the watchdog.
     this.resetWatchdog(gen);
     const l = line.endsWith("\r") ? line.slice(0, -1) : line;

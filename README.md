@@ -1,6 +1,6 @@
 # portato-vscode
 
-VS Code extension — a client for the [Portato](https://github.com/portuber/portato)
+VS Code extension -- a client for the [Portato](https://github.com/portuber/portato)
 daemon: manage SSH port-forwarding tunnels from the sidebar (status, enable /
 disable / restart, logs, passphrase prompts).
 
@@ -11,7 +11,7 @@ live in the `portato` Go binary.
 
 ```sh
 npm install
-npm run compile     # esbuild → out/extension.js
+npm run compile     # esbuild -> out/extension.js
 npm run watch       # + F5 (Run Extension) in VS Code
 npm run typecheck
 ```

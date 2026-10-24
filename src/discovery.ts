@@ -4,11 +4,11 @@ import * as path from "node:path";
 
 // Mirrors internal/daemon/discovery.go + paths_unix.go (adrg/xdg semantics:
 // XDG_* env wins on every OS, then the platform default). Order:
-//   1. explicit override — the portato.socketPath setting, else PORTATO_SOCKET;
+//   1. explicit override -- the portato.socketPath setting, else PORTATO_SOCKET;
 //      wins outright, exactly like SocketOverride() in the Go resolver
-//   2. the marker file <configHome>/portato/daemon.socket — a JSON document
+//   2. the marker file <configHome>/portato/daemon.socket -- a JSON document
 //      {"socket": "...", "pid": N}; the socket counts only if it answers
-//      /healthz (probe supplied by the caller — DaemonClient)
+//      /healthz (probe supplied by the caller -- DaemonClient)
 //   3. the runtime socket path:
 //        darwin: <stateHome>/portato/portato-<uid>.sock
 //        linux:  $XDG_RUNTIME_DIR/portato-<uid>.sock; adrg/xdg v0.5.3 never
@@ -18,7 +18,7 @@ import * as path from "node:path";
 //
 // env-dependent: an extension host launched from the Dock on macOS does not
 // inherit shell rc exports, so candidate [3] can diverge from a daemon
-// started in a terminal — the socketPath override exists for that case.
+// started in a terminal -- the socketPath override exists for that case.
 
 interface Marker {
   socket?: string;
@@ -105,7 +105,7 @@ export async function resolveSocketPath(
 }
 
 // The IPC bearer token lives next to the socket and is regenerated on every
-// daemon start — never cache it across daemon restarts.
+// daemon start -- never cache it across daemon restarts.
 export function tokenPath(socketPath: string): string {
   return path.join(path.dirname(socketPath), "portato.token");
 }

@@ -1,4 +1,4 @@
-# Packaged .vsix contents: the bundled extension only — no sources, no
+# Packaged .vsix contents: the bundled extension only -- no sources, no
 # test bundles, no build scripts or maps.
 src/**
 out/test/**

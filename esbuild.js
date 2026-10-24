@@ -26,7 +26,7 @@ async function testConfig() {
       .filter((f) => f.endsWith(".test.ts"))
       .map((f) => path.join("src/test", f));
   } catch {
-    // no tests yet — nothing to build
+    // no tests yet -- nothing to build
   }
   return {
     entryPoints: entries,
