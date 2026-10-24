@@ -151,10 +151,10 @@ export function pendingPrompt(s: TuberStatus): {
 export function endpoint(s: TuberStatus): string {
   switch (s.type) {
     case "remote":
-      return `${s.local} ← ${s.remote}`;
+      return `${s.local} <- ${s.remote}`;
     case "dynamic":
-      return `${s.local} ⇄ *`;
+      return `${s.local} <-> *`;
     default:
-      return `${s.local} → ${s.remote}`;
+      return `${s.local} -> ${s.remote}`;
   }
 }
