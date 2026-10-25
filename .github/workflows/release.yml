@@ -1,0 +1,78 @@
+# Release: on a pushed vX.Y.Z tag (cut by `make release-patch|minor|major`),
+# run the same checks as CI, package the .vsix, verify the tag matches
+# package.json, publish a GitHub Release with the .vsix + checksums and the
+# matching CHANGELOG.md section as the body, then publish to the Marketplace.
+# The Marketplace publish uses the VSCE_PAT repository secret (an Azure DevOps
+# personal access token with the Marketplace "Manage" scope).
+#
+# Order matters: the GitHub Release is created before the Marketplace publish
+# so that a transient publish failure (expired PAT, Marketplace hiccup) can be
+# fixed by re-running the workflow -- action-gh-release upserts the existing
+# release, and vsce publish simply retries.
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: package and publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run compile
+      - run: npm test
+      - name: Package
+        run: npm run package
+      - name: Guard - package.json version must match the tag
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          ver="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$ver" ]; then
+            echo "tag v$tag does not match package.json version $ver" >&2
+            echo "cut releases with: make release-{patch,minor,major}" >&2
+            exit 1
+          fi
+      - name: Checksums
+        run: sha256sum *.vsix > checksums.txt
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          awk -v ver="$ver" '
+            BEGIN { esc = ver; gsub(/\./, "\\.", esc) }
+            /^## \[/ { on = ($0 ~ "^## \\[" esc "\\]") ? 1 : 0; next }
+            /^\[/ { on = 0 }
+            on { print }
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "CHANGELOG.md has no section for $ver" >&2
+            exit 1
+          fi
+      - name: GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: release-notes.md
+          fail_on_unmatched_files: true
+          files: |
+            *.vsix
+            checksums.txt
+      - name: Publish to the Marketplace
+        # --packagePath publishes exactly the artifact whose checksum is in
+        # checksums.txt: without it vsce re-packs from the working directory,
+        # which by now also contains checksums.txt / release-notes.md. vsce
+        # reads the token from the VSCE_PAT environment variable, keeping the
+        # secret out of argv.
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx vsce publish --packagePath "portato-vscode-${GITHUB_REF_NAME#v}.vsix"

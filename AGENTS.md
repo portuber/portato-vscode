@@ -60,6 +60,12 @@ temporary `--socket` + `XDG_CONFIG_HOME`/`XDG_STATE_HOME` (binary from
 `$PORTATO_BINARY` or `/opt/homebrew/bin/portato`; skips when absent);
 `npm run test:all` -- both.
 
+Releases: `make release-patch|minor|major` (or `make release VERSION=vX.Y.Z`)
+gates on a clean tree + a CHANGELOG.md section, runs typecheck + unit tests,
+bumps package.json and package-lock.json, commits, tags and pushes; the tag triggers
+`.github/workflows/release.yml` (package, version guard, GitHub Release with
+vsix + checksums, Marketplace publish via the VSCE_PAT secret).
+
 ## Layout
 
 ```

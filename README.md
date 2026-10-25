@@ -89,6 +89,26 @@ CI runs typecheck, compile, unit tests and packaging on every push and PR
 (.github/workflows/ci.yml); integration tests need a real daemon and stay
 on dev machines.
 
+## Releasing
+
+Releases are cut with the Makefile targets and published automatically:
+
+```sh
+make release-patch  # v1.2.3 -> v1.2.4
+make release-minor  # v1.2.3 -> v1.3.0
+make release-major  # v1.2.3 -> v2.0.0
+make release VERSION=v1.2.4  # explicit
+```
+
+A release requires a clean working tree and a `## [X.Y.Z]` section already in
+[CHANGELOG.md](CHANGELOG.md), runs typecheck and unit tests locally, then asks
+for confirmation, bumps `package.json` and `package-lock.json`, commits, tags
+`vX.Y.Z` and pushes. The tag
+triggers [.github/workflows/release.yml](.github/workflows/release.yml):
+typecheck, compile, unit tests, `vsce package`, a tag/version guard, a GitHub
+Release with the `.vsix` and checksums (release notes taken from the CHANGELOG
+section), and a Marketplace publish via the `VSCE_PAT` repository secret.
+
 ## Versioning
 
 Semantic Versioning 2.0.0, stable `vX.Y.Z` tags only -- no pre-release, RC

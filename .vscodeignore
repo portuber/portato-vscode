@@ -17,5 +17,8 @@ out/test/**
 out/**/*.map
 esbuild.js
 tsconfig.json
+Makefile
+checksums.txt
+release-notes.md
 package-lock.json
 *.vsix
