@@ -154,7 +154,47 @@ context actions, new settings, and mitigations for known daemon bugs.
 - Informational toasts (copy confirmations, filter results) obey
   `portato.showNotifications` instead of always firing.
 
+## [0.3.0] - 2026-10-25
+
+### Added
+
+- **Portato: Import Forwards from SSH Config** -- a dry-run preview of
+  the forwards found in `~/.ssh/config`, picked per host (selecting any
+  forward selects its whole ssh block), written to the portato config
+  through the CLI; the daemon reloads it on its own. Host arguments go
+  after a `--` separator, so ssh patterns that start with a dash cannot
+  be read as flags.
+- **Portato: Run Portato Doctor** and **Run Portato Doctor (Probe
+  Servers)** -- the CLI doctor in a transient terminal that parks the
+  exit code, so the report stays readable after the run.
+- **Portato: Open Portato Config** -- opens `config.yaml` from the
+  portato config dir, with a friendly message when it does not exist
+  yet.
+- A **Get Started walkthrough** on first install (Welcome page), covering
+  the view, the daemon, the first tunnel, the SSH-config import and the
+  status-bar quick pick.
+- `CONTRIBUTING.md` (split out of README), a README section on remote
+  workspaces (Remote-SSH, WSL, Dev Containers) and a command table that
+  covers every contributed command again.
+- CI hardening: lint + typecheck + unit + integration tests on ubuntu
+  and macOS against the pinned `PORTATO_VERSION` portato release;
+  Dependabot (npm + actions); release actions pinned to commit SHAs;
+  idempotent publishes (`--skip-duplicate`) including a best-effort Open
+  VSX publish when the `OVSX_PAT` secret is set; a static
+  command-registration parity test.
+
+### Changed
+
+- ESLint with type-checked rules is now part of the toolchain
+  (`npm run lint`, enforced in CI and in the release preflight). The
+  mechanical fixes the type-checked pass surfaced are behavior-neutral:
+  dead imports removed, raw HTTP rejections always carry an `Error`,
+  an explicit quick-pick item type instead of a cast, `openAdd` is
+  honestly synchronous, and a targeted `prefer-const` exception remains
+  on `connect()`'s self-referencing promise (documented in place).
+
 [0.1.0]: https://github.com/portuber/portato-vscode/releases/tag/v0.1.0
 [0.1.1]: https://github.com/portuber/portato-vscode/releases/tag/v0.1.1
 [0.1.2]: https://github.com/portuber/portato-vscode/releases/tag/v0.1.2
 [0.2.0]: https://github.com/portuber/portato-vscode/releases/tag/v0.2.0
+[0.3.0]: https://github.com/portuber/portato-vscode/releases/tag/v0.3.0

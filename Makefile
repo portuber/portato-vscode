@@ -3,8 +3,8 @@
 # typecheck + compile + unit tests + `vsce package`, a guard that the tag matches
 # package.json, a GitHub Release with the .vsix and checksums, and a Marketplace
 # publish via the VSCE_PAT repository secret. Tags are strictly vX.Y.Z (no
-# pre-releases; see the Versioning section in README.md). Pick the version one
-# of two ways:
+# pre-releases; see the Versioning section in CONTRIBUTING.md). Pick the
+# version one of two ways:
 #   make release-patch | release-minor | release-major  -- bump from the latest tag
 #   make release VERSION=vX.Y.Z                        -- explicit override
 # Before touching the remote it runs the same checks CI runs (lint,

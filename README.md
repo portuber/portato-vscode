@@ -29,6 +29,13 @@ no daemon is running, the view offers a Start button that launches one
 - **Daemon lifecycle**: start / stop the daemon from the view; if the daemon
   dies mid-session the view degrades to a "not running" state with a Start
   button and picks it back up automatically.
+- **SSH config import**: a dry-run preview of the forwards in
+  `~/.ssh/config`, picked per host and written to the portato config.
+- **Doctor**: the CLI doctor's health report in a terminal, plus one-click
+  access to the portato config file.
+
+A short walkthrough opens on first install (Welcome page -> Get started
+with Portato).
 
 ## Commands
 
@@ -38,18 +45,26 @@ convenience subset.
 | Command | Palette | Where |
 | --- | --- | --- |
 | Portato: Refresh | yes | view title |
-| Portato: Start Daemon / Stop Daemon | yes | view title |
+| Portato: Start Daemon | yes | view title + stopped welcome view |
+| Portato: Stop Daemon | yes | view title |
 | Portato: Show Logs | yes | view title |
 | Portato: Set Log Level... | yes | view title |
 | Portato: Filter Tunnels... | yes | view title |
 | Portato: Clear Tunnel Filter | no | view title (while a filter is active) |
-| Portato: Add Tunnel | yes | view title |
+| Portato: Add Tunnel | yes | view title + welcome views |
 | Portato: Reload Config | yes | view title |
+| Portato: Tunnels and Daemon... | yes | status bar item |
+| Portato: Import Forwards from SSH Config | yes | palette |
+| Portato: Run Portato Doctor / Run Portato Doctor (Probe Servers) | yes | palette |
+| Portato: Open Portato Config | yes | palette |
+| Portato: Open the Portato Website | yes | palette + welcome views |
 | Portato: Enable Tunnel / Disable Tunnel / Restart Tunnel | no | tunnel inline actions |
 | Portato: Answer Prompt | no | tunnel inline action |
+| Portato: Edit Tunnel / Delete Tunnel | no | tunnel context menu |
 | Portato: Show Tunnel Logs | no | tunnel context menu |
 | Portato: Store Identity Passphrase / Forget Identity Passphrase | no | tunnel context menu |
-| Portato: Edit Tunnel / Delete Tunnel | no | tunnel context menu |
+| Portato: Copy Local Address / Open in Browser / Copy SOCKS URL | no | tunnel context menu |
+| Portato: Show Only This Tag / New Tunnel with This Tag | no | tag-group context menu |
 
 ## Settings
 
@@ -79,59 +94,26 @@ extension does not implement that transport yet; on Windows it degrades to
 "daemon not running". Full Windows support is a planned, separately tested
 task.
 
+## Remote workspaces (Remote-SSH, WSL, Dev Containers)
+
+The extension is `extensionKind: ui`: under Remote-SSH, WSL or Dev
+Containers it installs on the local machine, next to the portato daemon
+it talks to over a unix socket. Tunnels are established from the local
+machine; there is no remote-side component, and VS Code's automatic port
+forwarding is unrelated to them.
+
+- **Remote-SSH**: works as everywhere else, but the daemon and the
+  tunnels live on your workstation, not on the remote host.
+- **WSL**: not usable yet -- a Windows daemon would serve the named pipe
+  this extension does not speak (see Platform support), and a daemon
+  started inside WSL is not reachable from the Windows side over a unix
+  socket. Until Windows support lands, use the portato TUI inside WSL.
+- **Dev Containers**: same as Remote-SSH -- local daemon, local tunnels.
+
 ## Development
 
-```sh
-npm install
-npm run compile          # esbuild -> out/extension.js
-npm run watch            # + F5 (Run Extension) in VS Code
-npm run typecheck
-npm run lint             # ESLint (type-checked rules)
-npm test                 # unit tests (no VS Code, no daemon needed)
-npm run test:integration # against a disposable real daemon (needs portato)
-npm run package          # vsce package -> .vsix
-```
-
-CI runs lint, typecheck, compile, unit and integration tests and packaging
-on every push and PR (.github/workflows/ci.yml), on both ubuntu and macOS;
-the integration suite runs against a pinned `portato` release
-(`PORTATO_VERSION` in the workflow) downloaded per run.
-
-## Releasing
-
-Releases are cut with the Makefile targets and published automatically:
-
-```sh
-make release-patch  # v1.2.3 -> v1.2.4
-make release-minor  # v1.2.3 -> v1.3.0
-make release-major  # v1.2.3 -> v2.0.0
-make release VERSION=v1.2.4  # explicit
-```
-
-A release requires a clean working tree and a `## [X.Y.Z]` section already in
-[CHANGELOG.md](CHANGELOG.md), runs typecheck and unit tests locally, then asks
-for confirmation, bumps `package.json` and `package-lock.json`, commits, tags
-`vX.Y.Z` and pushes. The tag
-triggers [.github/workflows/release.yml](.github/workflows/release.yml):
-typecheck, compile, unit tests, `vsce package`, a tag/version guard, a GitHub
-Release with the `.vsix` and checksums (release notes taken from the CHANGELOG
-section), and a Marketplace publish via the `VSCE_PAT` repository secret.
-
-## Versioning
-
-Semantic Versioning 2.0.0, stable `vX.Y.Z` tags only -- no pre-release, RC
-or beta tags (same policy as [portato](https://github.com/portuber/portato)).
-While the major is `0`, a breaking change bumps the minor (`0.1.0` ->
-`0.2.0`), never the patch, and is flagged **BREAKING** in the release notes.
-
-The version number is a contract over the user-facing surfaces only: the
-`portato.*` command IDs, their titles, and the `portato.*` settings keys
-and defaults. Everything else -- tree layout, icons, the webview form,
-wording -- is free to change in any release.
-
-The daemon IPC the extension speaks is portato's contract, not this one:
-a release notes when it needs a newer daemon (the daemon reports its
-version since v1.11.0).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the dev setup, the checks CI
+runs, repo conventions, the release process and the versioning policy.
 
 ## License
 

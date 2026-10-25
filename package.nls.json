@@ -39,5 +39,17 @@
   "cmd.importSsh.title": "Import Forwards from SSH Config",
   "cmd.doctor.title": "Run Portato Doctor",
   "cmd.doctorProbe.title": "Run Portato Doctor (Probe Servers)",
-  "cmd.openConfig.title": "Open Portato Config"
+  "cmd.openConfig.title": "Open Portato Config",
+  "walkthrough.title": "Get started with Portato",
+  "walkthrough.description": "Start the daemon, add or import your first tunnels, and learn the quick pick.",
+  "walkthrough.explore.title": "Meet the Portato view",
+  "walkthrough.explore.description": "A live tree of every tunnel, driven by the portato daemon.",
+  "walkthrough.daemon.title": "Start the daemon",
+  "walkthrough.daemon.description": "The extension drives a running daemon; it never spawns one silently.",
+  "walkthrough.add.title": "Add your first tunnel",
+  "walkthrough.add.description": "One form, every config field, with a conflict check.",
+  "walkthrough.import.title": "Import from your SSH config",
+  "walkthrough.import.description": "Turn the forwards in ~/.ssh/config into tunnels.",
+  "walkthrough.statusbar.title": "Watch from the status bar",
+  "walkthrough.statusbar.description": "The quick pick, the attention tally and one-click toggles."
 }

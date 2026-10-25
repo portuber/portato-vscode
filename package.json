@@ -232,6 +232,70 @@
         "icon": "$(go-to-file)"
       }
     ],
+    "walkthroughs": [
+      {
+        "id": "portato.getStarted",
+        "title": "%walkthrough.title%",
+        "description": "%walkthrough.description%",
+        "steps": [
+          {
+            "id": "explore",
+            "title": "%walkthrough.explore.title%",
+            "description": "%walkthrough.explore.description%",
+            "media": {
+              "markdown": "walkthroughs/explore.md"
+            },
+            "completionEvents": [
+              "onView:portatoTunnels"
+            ]
+          },
+          {
+            "id": "daemon",
+            "title": "%walkthrough.daemon.title%",
+            "description": "%walkthrough.daemon.description%",
+            "media": {
+              "markdown": "walkthroughs/daemon.md"
+            },
+            "completionEvents": [
+              "onCommand:portato.startDaemon"
+            ]
+          },
+          {
+            "id": "add",
+            "title": "%walkthrough.add.title%",
+            "description": "%walkthrough.add.description%",
+            "media": {
+              "markdown": "walkthroughs/add.md"
+            },
+            "completionEvents": [
+              "onCommand:portato.addTunnel"
+            ]
+          },
+          {
+            "id": "import",
+            "title": "%walkthrough.import.title%",
+            "description": "%walkthrough.import.description%",
+            "media": {
+              "markdown": "walkthroughs/import.md"
+            },
+            "completionEvents": [
+              "onCommand:portato.importSsh"
+            ]
+          },
+          {
+            "id": "statusbar",
+            "title": "%walkthrough.statusbar.title%",
+            "description": "%walkthrough.statusbar.description%",
+            "media": {
+              "markdown": "walkthroughs/statusbar.md"
+            },
+            "completionEvents": [
+              "onCommand:portato.statusPicker"
+            ]
+          }
+        ]
+      }
+    ],
     "viewsWelcome": [
       {
         "view": "portatoTunnels",

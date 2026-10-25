@@ -2,7 +2,8 @@
 # built-in defaults rather than replacing them; entries that overlap the
 # defaults are kept for clarity. The runtime payload is out/extension.js +
 # package.json + package.nls.json + README.md + LICENSE + media/
-# (+ CHANGELOG.md when it exists), minus the demo animation below.
+# + walkthroughs/ (+ CHANGELOG.md when it exists), minus the demo
+# animation below.
 .vscodeignore
 .vscode/**
 .git
@@ -16,6 +17,7 @@ src/**
 out/test/**
 out/**/*.map
 esbuild.js
+eslint.config.mjs
 tsconfig.json
 Makefile
 checksums.txt
