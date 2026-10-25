@@ -1,8 +1,8 @@
 # AGENTS.md -- portato-vscode
 
 Working rules for AI agents. The extension is a client of the Portato daemon;
-the daemon, config and SSH logic live in the Go repo (`~/projects/pet/portato`)
-and are never reimplemented here.
+the daemon, config and SSH logic live in the Go repo
+(github.com/portuber/portato) and are never reimplemented here.
 
 ## Project state
 
@@ -31,7 +31,8 @@ The Go repo: `internal/daemon/server.go` (endpoints), `internal/forward/state.go
 
 ## Sibling repo (read-only, no prompt)
 
-`../portato` -- the Portato Go repo (the daemon this extension talks to).
+`../portato` -- a local checkout of github.com/portuber/portato (the daemon
+this extension talks to).
 Reading it is allowed without a prompt where a local
 `.opencode/opencode.json` exists (gitignored; copy
 `.opencode/opencode.jsonc.example` and adjust the paths); edits to Go code
