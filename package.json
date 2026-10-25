@@ -2,7 +2,7 @@
   "name": "portato-vscode",
   "displayName": "Portato",
   "description": "%extension.description%",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "publisher": "portuber",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -435,7 +435,12 @@
         },
         "portato.minLogLevel": {
           "type": "string",
-          "enum": ["debug", "info", "warning", "error"],
+          "enum": [
+            "debug",
+            "info",
+            "warning",
+            "error"
+          ],
           "default": "info",
           "markdownDescription": "%cfg.minLogLevel.desc%"
         },
