@@ -306,16 +306,27 @@ describe("integration: real daemon (disposable)", { skip: !PORTATO }, () => {
   it("identities store/forget (tolerates a host without a keyring backend)", async () => {
     client = client ?? (await DaemonClient.create(sock));
     // On macOS with the keyring backend this touches the real login
-    // keychain; deleting a nonexistent entry is a harmless no-op, and on
-    // keyring-less hosts the daemon answers 500, which the test tolerates.
+    // keychain; deleting a nonexistent entry is a harmless no-op. On
+    // keyring-less hosts the daemon answers 500 with either its own
+    // "storage unavailable" or a raw go-keyring error (a missing
+    // dbus-launch on newer ubuntu-latest runner images) -- and store can
+    // succeed where forget still fails, so each call is guarded separately.
     const pathArg = path.join(dir, "fake-itest-key");
+    const noKeyring = (e: unknown): boolean => {
+      const msg = e instanceof Error ? e.message : String(e);
+      return /storage unavailable|dbus|keyring delete/.test(msg);
+    };
     try {
       await client.setIdentity(pathArg, "pw");
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (/storage unavailable/.test(msg)) return; // no keyring on this host
+      if (noKeyring(e)) return; // no keyring on this host
       throw e;
     }
-    await client.forgetIdentity(pathArg);
+    try {
+      await client.forgetIdentity(pathArg);
+    } catch (e) {
+      if (noKeyring(e)) return; // keyring absent only on the forget path
+      throw e;
+    }
   });
 });
