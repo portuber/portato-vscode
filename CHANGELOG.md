@@ -43,4 +43,19 @@ First public release.
 - Localization-ready UI strings (`vscode.l10n` + `package.nls.json`).
 - CI: typecheck, compile, unit tests and `vsce package` on GitHub Actions.
 
+## [0.1.1] - 2026-10-25
+
+Maintenance release: no user-facing extension changes.
+
+### Fixed
+
+- CI reliability: a fake-daemon token-rotation test no longer races the
+  401-retry on slow runners (test-only).
+
+### Added
+
+- Automated releases: `make release-{patch,minor,major}` targets and a
+  tag-triggered release workflow (development tooling).
+
 [0.1.0]: https://github.com/portuber/portato-vscode/releases/tag/v0.1.0
+[0.1.1]: https://github.com/portuber/portato-vscode/releases/tag/v0.1.1
