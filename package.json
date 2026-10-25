@@ -54,91 +54,109 @@
     "commands": [
       {
         "command": "portato.refresh",
+        "category": "Portato",
         "title": "%cmd.refresh.title%",
         "icon": "$(refresh)"
       },
       {
         "command": "portato.startDaemon",
+        "category": "Portato",
         "title": "%cmd.startDaemon.title%",
         "icon": "$(play)"
       },
       {
         "command": "portato.stopDaemon",
+        "category": "Portato",
         "title": "%cmd.stopDaemon.title%",
         "icon": "$(debug-stop)"
       },
       {
         "command": "portato.enable",
+        "category": "Portato",
         "title": "%cmd.enable.title%",
         "icon": "$(debug-start)"
       },
       {
         "command": "portato.disable",
+        "category": "Portato",
         "title": "%cmd.disable.title%",
         "icon": "$(debug-stop)"
       },
       {
         "command": "portato.restart",
+        "category": "Portato",
         "title": "%cmd.restart.title%",
         "icon": "$(debug-restart)"
       },
       {
         "command": "portato.answerPrompt",
+        "category": "Portato",
         "title": "%cmd.answerPrompt.title%",
         "icon": "$(key)"
       },
       {
         "command": "portato.showLogs",
+        "category": "Portato",
         "title": "%cmd.showLogs.title%",
         "icon": "$(output)"
       },
       {
         "command": "portato.showTuberLogs",
+        "category": "Portato",
         "title": "%cmd.showTuberLogs.title%",
         "icon": "$(output)"
       },
       {
         "command": "portato.setLogLevel",
+        "category": "Portato",
         "title": "%cmd.setLogLevel.title%",
-        "icon": "$(filter)"
+        "icon": "$(list-filter)"
       },
       {
         "command": "portato.storeIdentity",
+        "category": "Portato",
         "title": "%cmd.storeIdentity.title%",
         "icon": "$(key)"
       },
       {
         "command": "portato.forgetIdentity",
+        "category": "Portato",
         "title": "%cmd.forgetIdentity.title%",
         "icon": "$(key)"
       },
       {
         "command": "portato.filterTunnels",
+        "category": "Portato",
         "title": "%cmd.filterTunnels.title%",
         "icon": "$(filter)"
       },
       {
         "command": "portato.clearFilter",
+        "category": "Portato",
         "title": "%cmd.clearFilter.title%",
-        "icon": "$(clear-all)"
+        "icon": "$(close)"
       },
       {
         "command": "portato.addTunnel",
+        "category": "Portato",
         "title": "%cmd.addTunnel.title%",
         "icon": "$(add)"
       },
       {
         "command": "portato.editTunnel",
+        "category": "Portato",
         "title": "%cmd.editTunnel.title%",
         "icon": "$(edit)"
       },
       {
         "command": "portato.deleteTunnel",
+        "category": "Portato",
         "title": "%cmd.deleteTunnel.title%",
         "icon": "$(trash)"
       },
       {
         "command": "portato.reloadConfig",
+        "category": "Portato",
         "title": "%cmd.reloadConfig.title%",
         "icon": "$(sync)"
       }
