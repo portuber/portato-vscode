@@ -795,18 +795,30 @@ class PortatoController implements vscode.Disposable {
   }
 
   /**
-   * Stop core (CLI stop + teardown); THROWS on failure so chained flows
+   * Stop core (teardown first, then CLI stop); THROWS on failure so chained flows
    * (restart) can distinguish "stopped" from "stop failed" -- a follow-up
    * start after a failed stop would only bounce off the daemon's flock.
    */
   private async stopDaemonCore(): Promise<string> {
-    const out = await stopDaemon();
     // A user-driven stop (Stop button, restart chain): auto-start stays
     // off for the rest of the window session (D-5 verdict).
     this.userStopped = true;
+    // D5 mitigation (consult verdict): the SSE stream and client go down
+    // BEFORE the CLI stop, along with any armed poll timer -- a timer
+    // firing mid-stop would re-adopt the dying daemon and restart SSE on
+    // it. The finally block re-arms the poll loop either way, so a failed
+    // stop (daemon still alive) is followed by a quiet reconnect instead
+    // of a dead view.
+    if (this.pollTimer !== undefined) {
+      clearTimeout(this.pollTimer);
+      this.pollTimer = undefined;
+    }
     this.teardown();
-    this.schedulePoll();
-    return out;
+    try {
+      return await stopDaemon();
+    } finally {
+      this.schedulePoll();
+    }
   }
 
   /** Stop then start, halting at the first failure with its own message. */

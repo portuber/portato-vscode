@@ -157,3 +157,19 @@ export function canonicalTuber(t: Record<string, unknown>): string {
     .sort();
   return JSON.stringify(keys.map((k) => [k, t[k]]));
 }
+
+/**
+ * Daemon bug D2 mitigation decision (consult D-8): a wholesale PUT that
+ * flips `enabled` does not apply on some daemon versions until restart,
+ * so the form must follow it with an explicit enable/disable IPC call.
+ * Pure decision only -- "none" means no flip, no follow-up.
+ */
+export function enableFollowUp(
+  body: Record<string, unknown>,
+  fresh: Record<string, unknown>,
+): "none" | "enable" | "disable" {
+  if (typeof body.enabled !== "boolean") return "none";
+  const was = fresh.enabled === true;
+  if (body.enabled === was) return "none";
+  return body.enabled ? "enable" : "disable";
+}

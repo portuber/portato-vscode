@@ -103,6 +103,58 @@ Hotfix release for verified bugs found in external review.
 - The demo animation is no longer packaged into the `.vsix` (it stays in
   the repository README).
 
+## [0.2.0] - 2026-10-25
+
+UX and onboarding release: welcome views, a status-bar quick pick, tree
+context actions, new settings, and mitigations for known daemon bugs.
+
+### Added
+
+- Welcome views in the Tunnels panel: a missing `portato` binary, a stopped
+  daemon, a daemon that rejects the extension's IPC token, and an empty
+  tunnel list each render actionable guidance instead of a bare tree. A
+  brief loading state keeps "not running" from flashing during discovery.
+- The status bar item is now clickable: a quick pick offers daemon actions
+  (start/stop/restart, show logs, add tunnel) plus one row per tunnel with
+  its state; picking a tunnel toggles it, and a tunnel blocked on a prompt
+  opens that prompt instead. The bar shows an attention tally (tunnels in
+  `error` plus pending prompts) with a warning background.
+- Tree context actions: Copy Local Address (wildcard binds normalized to
+  the loopback), Open in Browser (local forwards), and Copy SOCKS URL
+  (dynamic tunnels; the username follows the daemon's resolution rule --
+  the tunnel's own `socks5_user` when set, else the config default -- and
+  is percent-encoded; the password is never embedded).
+- Tag-group context menu: Show Only This Tag filters the tree; New Tunnel
+  with This Tag preseeds the add form.
+- New settings: `portato.minLogLevel` (default level for the daemon log
+  view), `portato.autoStartDaemon` (machine scope, default off; starts the
+  daemon when the view opens and none is running -- at most once per
+  window, never after you stop the daemon yourself, only when the binary
+  resolves) and `portato.showNotifications` (informational toasts only;
+  warnings, errors and prompts are always shown).
+- The daemon's version from `/healthz` is checked against a minimum
+  (1.11.0) and surfaced as a one-time warning when missing, unrecognized
+  or older; nothing is ever blocked by it.
+- A lazy `Portato Diagnostics` log channel for the extension's own
+  diagnostics (version warnings, auto-start decisions, IPC errors). The
+  daemon log stream keeps its own `Portato Logs` channel with unchanged
+  timestamps.
+
+### Fixed
+
+- Daemon bug D2 mitigation: saving an edit that flips `enabled` now
+  follows the PUT with an explicit enable/disable call under the saved
+  name, so the flip applies immediately instead of after a daemon restart.
+  A failed follow-up after a saved PUT is reported as a warning ("tunnel
+  saved, but the enable/disable follow-up failed: ...") instead of
+  passing as a plain success.
+- Daemon bug D5 mitigation: Stop tears the SSE stream and client down
+  before the CLI stop; a failed stop re-arms discovery so a still-running
+  daemon is quietly re-adopted instead of leaving a dead view.
+- Informational toasts (copy confirmations, filter results) obey
+  `portato.showNotifications` instead of always firing.
+
 [0.1.0]: https://github.com/portuber/portato-vscode/releases/tag/v0.1.0
 [0.1.1]: https://github.com/portuber/portato-vscode/releases/tag/v0.1.1
 [0.1.2]: https://github.com/portuber/portato-vscode/releases/tag/v0.1.2
+[0.2.0]: https://github.com/portuber/portato-vscode/releases/tag/v0.2.0

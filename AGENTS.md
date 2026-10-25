@@ -25,7 +25,10 @@ context key (loading/noBinary/stopped/rejected/empty/ok, pure derivation in
 a status-bar quick pick (`src/quickPick.ts`) and an attention indicator --
 error/prompting tunnels append an `$(alert) N` tally and paint
 `statusBarItem.warningBackground` (`StatusBarItem.badge` is proposed API
-and cannot ship) -- plus the warning-only daemon-version check.
+and cannot ship) -- plus the warning-only daemon-version check. Known
+daemon bugs are mitigated extension-side: an edit that flips `enabled`
+follows the PUT with an explicit enable/disable call (D2), and Stop tears
+the SSE stream down before the CLI stop (D5).
 The extension is unix-only (macOS/Linux); the daemon's Windows named pipe is
 not implemented (README "Platform support").
 

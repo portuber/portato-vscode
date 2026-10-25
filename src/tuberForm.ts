@@ -5,6 +5,7 @@ import { planFormError } from "./errors";
 import type { ConfigTuber } from "./types";
 import {
   buildTuberBody,
+  enableFollowUp,
   prefillFrom,
   tuberChanged,
   validateFields,
@@ -306,6 +307,32 @@ export class TuberFormController {
           await client.updateTuber(originalName, body as unknown as ConfigTuber);
           mutated = true;
           toast = S.msgUpdated(msg.fields.name.trim());
+          // Daemon bug D2 mitigation (consult D-8): a wholesale PUT does
+          // not apply an enabled flip until restart on some daemon
+          // versions, so mirror the flip through the idempotent
+          // enable/disable IPC under the POST-PUT name (PUT can rename).
+          const followUp = enableFollowUp(body, fresh);
+          if (followUp !== "none") {
+            try {
+              // The form always carries the trimmed name
+              // (validateFields), so the POST-PUT name is a string here.
+              const savedName = String(body.name);
+              if (followUp === "enable") await client.enable(savedName);
+              else await client.disable(savedName);
+            } catch (e) {
+              // The PUT succeeded, so this is NOT an edit failure: the
+              // config says enabled but the tunnel could not be brought
+              // up (e.g. the daemon's local-port preflight failed with a
+              // 500). A warning, not an info toast.
+              void vscode.window.showWarningMessage(
+                vscode.l10n.t(
+                  "portato: tunnel saved, but the enable/disable follow-up failed: {0}",
+                  errText(e),
+                ),
+              );
+              toast = undefined;
+            }
+          }
         }
       }
       panel.dispose();

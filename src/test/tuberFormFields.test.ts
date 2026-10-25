@@ -4,6 +4,7 @@ import {
   buildTuberBody,
   canonicalTuber,
   emptyForm,
+  enableFollowUp,
   normalizeTags,
   prefillFrom,
   tagsToText,
@@ -127,5 +128,27 @@ describe("tuberChanged / canonicalTuber", () => {
     assert.equal(tuberChanged(a, { name: "a", enabled: false }), true);
     assert.equal(tuberChanged(a, { name: "a" }), true);
     assert.equal(canonicalTuber(a), '[["enabled",true],["name","a"]]');
+  });
+});
+
+describe("enableFollowUp (D2 mitigation)", () => {
+  it("an enabled flip demands the matching follow-up call", () => {
+    assert.equal(enableFollowUp({ enabled: true }, { enabled: false }), "enable");
+    assert.equal(enableFollowUp({ enabled: false }, { enabled: true }), "disable");
+  });
+
+  it("no flip, no follow-up", () => {
+    assert.equal(enableFollowUp({ enabled: true }, { enabled: true }), "none");
+    assert.equal(enableFollowUp({ enabled: false }, { enabled: false }), "none");
+  });
+
+  it("a non-boolean or absent body value is never a flip", () => {
+    assert.equal(enableFollowUp({ enabled: "true" }, { enabled: false }), "none");
+    assert.equal(enableFollowUp({}, { enabled: true }), "none");
+  });
+
+  it("an absent fresh value counts as disabled", () => {
+    assert.equal(enableFollowUp({ enabled: true }, {}), "enable");
+    assert.equal(enableFollowUp({ enabled: false }, {}), "none");
   });
 });
