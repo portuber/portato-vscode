@@ -558,7 +558,7 @@
     "package": "vsce package"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.5",
+    "@eslint/js": "^10.0.1",
     "@types/node": "^20.17.0",
     "@types/vscode": "^1.90.0",
     "@vscode/vsce": "^4.0.0",
