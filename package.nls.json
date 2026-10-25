@@ -21,11 +21,19 @@
   "cmd.reloadConfig.title": "Reload Config",
   "cmd.statusPicker.title": "Tunnels and Daemon...",
   "cmd.openLanding.title": "Open the Portato Website",
+  "cmd.copyAddress.title": "Copy Local Address",
+  "cmd.openInBrowser.title": "Open in Browser",
+  "cmd.copySocksUrl.title": "Copy SOCKS URL",
+  "cmd.filterTag.title": "Show Only This Tag",
+  "cmd.addTunnelWithTag.title": "New Tunnel with This Tag",
   "welcome.noBinary": "The portato CLI was not found on this machine.\n[Open the installation guide](command:portato.openLanding)\n[Set the binary path](command:workbench.action.openSettings?%22portato.binaryPath%22)",
   "welcome.stopped": "The Portato daemon is not running.\n[Start daemon](command:portato.startDaemon)",
   "welcome.rejected": "The daemon is running but rejects the extension's IPC token.\n[Check the socketPath setting](command:workbench.action.openSettings?%22portato.socketPath%22)",
   "welcome.empty": "No tunnels configured yet.\n[Add tunnel](command:portato.addTunnel)",
   "cfg.binaryPath.desc": "Path to the `portato` binary. Set an absolute path if VS Code was launched from the Dock (GUI apps on macOS do not inherit shell `PATH`).",
   "cfg.socketPath.desc": "Override the daemon socket path. When empty, discovery mirrors the Go client: `PORTATO_SOCKET` env -> the `daemon.socket` marker in the portato config dir -> the runtime socket path.",
-  "cfg.groupByTag.desc": "Group tunnels in the sidebar by their first tag. Drag-and-drop reorder is disabled while grouping or a filter is active."
+  "cfg.groupByTag.desc": "Group tunnels in the sidebar by their first tag. Drag-and-drop reorder is disabled while grouping or a filter is active.",
+  "cfg.minLogLevel.desc": "Minimum level for the daemon log view (`Portato Logs`); entries below it are filtered out. The *Set Log Level...* command overrides this for the current session.",
+  "cfg.autoStartDaemon.desc": "Start the Portato daemon automatically when the Tunnels view opens and no daemon is running. Fires at most once per window, never after you stop the daemon yourself, and only when the `portato` binary resolves.",
+  "cfg.showNotifications.desc": "Show informational notifications (copy confirmations, filter results and the like). Warnings, errors and passphrase/host-key prompts are always shown."
 }

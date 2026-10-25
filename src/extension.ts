@@ -5,12 +5,12 @@ import { DaemonClient, probeSocket, httpStatusOf } from "./daemonClient";
 import { planTunnelError, planPromptError, AuthEpisode } from "./errors";
 import { resolveSocketPath } from "./discovery";
 import { settingOverride, startDaemon, stopDaemon, binaryPath } from "./daemonLifecycle";
-import { askLogLevel, LogsView } from "./logsView";
+import { askLogLevel, LogsView, type LogLevel } from "./logsView";
 import { PromptCoordinator } from "./prompts";
 import { identityCandidates, type IdentityCandidate } from "./identityPaths";
 import { SseStream } from "./sse";
 import { renderBar, contextSend, attentionCount, type BarState } from "./statusBar";
-import { TunnelsTreeProvider, TuberItem } from "./treeProvider";
+import { TunnelsTreeProvider, TuberItem, TagGroupItem } from "./treeProvider";
 import { TuberFormController } from "./tuberForm";
 import { matchesFilter, type TunnelFilter } from "./treeGroups";
 import { pendingPrompt, isActive, type PromptKind, type TuberStatus } from "./types";
@@ -18,7 +18,8 @@ import { buildPickRows, type PickerAction } from "./quickPick";
 import { deriveViewState } from "./viewState";
 import { classifyVersion, MIN_DAEMON_VERSION } from "./daemonVersion";
 import { isBinaryAvailable } from "./binaryCheck";
-import { diagWarn, disposeDiagnostics } from "./diagnostics";
+import { diagWarn, diagInfo, disposeDiagnostics } from "./diagnostics";
+import { browserUrl, localAddress, socksUrl, resolvedSocks5User } from "./addrUrl";
 
 // Controller wiring: discovery -> client -> SSE -> tree/statusbar, plus the
 // daemon lifecycle commands and the prompt coordinator. All re-discovery and
@@ -76,6 +77,11 @@ class PortatoController implements vscode.Disposable {
   private lastBadgeBgSent: string | undefined;
   /** (socket, version) pairs already warned about this window session. */
   private readonly versionWarned = new Set<string>();
+  // -- autoStartDaemon (D-5 verdict constraints) ---------------------------
+  /** One shot per window session, success or failure. */
+  private autostartAttempted = false;
+  /** A user-initiated Stop cancels auto-start for the rest of the session. */
+  private userStopped = false;
   /**
    * Persistent-401 detection: a mismatch that survives fresh clients across
    * consecutive refresh cycles (each carrying a freshly-read token) is a
@@ -142,6 +148,53 @@ class PortatoController implements vscode.Disposable {
     if (v === this.lastViewStateSent) return;
     this.lastViewStateSent = v;
     void vscode.commands.executeCommand("setContext", "portato:viewState", v);
+  }
+
+  /**
+   * Informational toasts only; they obey portato.showNotifications. Errors,
+   * warnings and the prompt toasts (prompts.ts) never pass through here --
+   * silencing those would hide exactly the things that need a reaction
+   * (consult verdict).
+   */
+  private inform(msg: string): void {
+    if (!vscode.workspace.getConfiguration("portato").get<boolean>("showNotifications", true)) {
+      return;
+    }
+    void vscode.window.showInformationMessage(msg);
+  }
+
+  /**
+   * portato.minLogLevel seeds the daemon log filter; the Set Log Level
+   * command stays a per-session override on top.
+   */
+  applyMinLogLevelSetting(): void {
+    const raw = vscode.workspace.getConfiguration("portato").get<string>("minLogLevel");
+    const level: LogLevel =
+      raw === "debug" || raw === "info" || raw === "warning" || raw === "error"
+        ? raw
+        : "info";
+    this.logs.setMinLevel(level);
+  }
+
+  /**
+   * autoStartDaemon, fired once from activation only (never from the poll
+   * timer or the SSE reconnect path): the daemon must be absent, the
+   * binary must resolve, and no user Stop may have happened this session.
+   */
+  async maybeAutoStartDaemon(): Promise<void> {
+    if (this.autostartAttempted) return;
+    this.autostartAttempted = true;
+    if (!vscode.workspace.getConfiguration("portato").get<boolean>("autoStartDaemon")) {
+      return;
+    }
+    if (this.userStopped || this.daemonUp) return;
+    const bin = await isBinaryAvailable(binaryPath(), process.env.PATH ?? "");
+    if (!bin) {
+      diagWarn("autoStartDaemon: the configured binary does not resolve; skipping");
+      return;
+    }
+    diagInfo("autoStartDaemon: daemon absent; starting");
+    await this.startDaemonCommand();
   }
 
   /** Activate the connection: called on start, refresh, and on a timer. */
@@ -541,7 +594,7 @@ class PortatoController implements vscode.Disposable {
   async filterTunnelsCommand(): Promise<void> {
     const t = vscode.l10n.t;
     if (this.lastStatuses.length === 0) {
-      void vscode.window.showInformationMessage(t("portato: no tunnels to filter"));
+      this.inform(t("portato: no tunnels to filter"));
       return;
     }
     const tags = [
@@ -578,9 +631,7 @@ class PortatoController implements vscode.Disposable {
     this.tree.setFilter(filter);
     if (!filter) return;
     const shown = this.lastStatuses.filter((s) => matchesFilter(s, filter)).length;
-    void vscode.window.showInformationMessage(
-      t("portato: showing {0} of {1} tunnels", shown, this.lastStatuses.length),
-    );
+    this.inform(t("portato: showing {0} of {1} tunnels", shown, this.lastStatuses.length));
   }
 
   clearFilterCommand(): void {
@@ -667,9 +718,7 @@ class PortatoController implements vscode.Disposable {
       }
       await client.setIdentity(path, passphrase);
       await this.refreshTubers();
-      void vscode.window.showInformationMessage(
-        vscode.l10n.t("portato: passphrase stored for {0}", path),
-      );
+      this.inform(vscode.l10n.t("portato: passphrase stored for {0}", path));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       void vscode.window.showErrorMessage(vscode.l10n.t("portato: {0}: {1}", name, msg));
@@ -705,9 +754,7 @@ class PortatoController implements vscode.Disposable {
       if (!picked) return;
       const path = picked.label;
       await client.forgetIdentity(path);
-      void vscode.window.showInformationMessage(
-        vscode.l10n.t("portato: passphrase forgotten for {0}", path),
-      );
+      this.inform(vscode.l10n.t("portato: passphrase forgotten for {0}", path));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       void vscode.window.showErrorMessage(vscode.l10n.t("portato: {0}: {1}", name, msg));
@@ -738,7 +785,7 @@ class PortatoController implements vscode.Disposable {
   async stopDaemonCommand(): Promise<void> {
     try {
       const out = await this.stopDaemonCore();
-      if (out) void vscode.window.showInformationMessage(vscode.l10n.t("portato: {0}", out));
+      if (out) this.inform(vscode.l10n.t("portato: {0}", out));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       void vscode.window.showErrorMessage(
@@ -754,6 +801,9 @@ class PortatoController implements vscode.Disposable {
    */
   private async stopDaemonCore(): Promise<string> {
     const out = await stopDaemon();
+    // A user-driven stop (Stop button, restart chain): auto-start stays
+    // off for the rest of the window session (D-5 verdict).
+    this.userStopped = true;
     this.teardown();
     this.schedulePoll();
     return out;
@@ -763,7 +813,7 @@ class PortatoController implements vscode.Disposable {
   private async restartDaemonSequence(): Promise<void> {
     try {
       const out = await this.stopDaemonCore();
-      if (out) void vscode.window.showInformationMessage(vscode.l10n.t("portato: {0}", out));
+      if (out) this.inform(vscode.l10n.t("portato: {0}", out));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       void vscode.window.showErrorMessage(
@@ -875,6 +925,62 @@ class PortatoController implements vscode.Disposable {
     if (name) void this.forms.openEdit(name);
   }
 
+  /**
+   * Tree context: copy the local endpoint, wildcard binds normalized to
+   * the loopback (pure builder in addrUrl.ts).
+   */
+  copyAddressCommand(item?: TuberItem): void {
+    const addr = item ? localAddress(item.status) : undefined;
+    if (!addr) return;
+    void vscode.env.clipboard.writeText(addr);
+    this.inform(vscode.l10n.t("portato: copied {0}", addr));
+  }
+
+  /** Tree context: open a local forward in the default browser. */
+  openInBrowserCommand(item?: TuberItem): void {
+    const url = item ? browserUrl(item.status) : undefined;
+    if (!url) return;
+    void vscode.env.openExternal(vscode.Uri.parse(url));
+  }
+
+  /**
+   * Tree context: copy the SOCKS URL of a dynamic tunnel. The username
+   * follows the daemon's ResolvedSocks5User rule -- the tuber's own
+   * socks5_user wins when non-blank, otherwise the config default applies
+   * (the mirror lives in addrUrl.ts). The password is never embedded and
+   * neither the URL nor the config body is ever logged.
+   */
+  async copySocksUrlCommand(item?: TuberItem): Promise<void> {
+    const client = this.client;
+    const status = item?.status;
+    if (!client || !status) return;
+    if (status.type !== "dynamic") return;
+    let user = "";
+    try {
+      const cfg = await client.config();
+      // Mirror the daemon's ResolvedSocks5User: the tuber's own value
+      // wins over the default (see addrUrl.ts).
+      const raw = cfg.tubers.find((t) => t.name === status.name);
+      user = resolvedSocks5User(raw?.socks5_user, cfg.defaults.socks5_user);
+    } catch {
+      // No config, no username: the bare URL is still correct.
+    }
+    const url = socksUrl(status, user);
+    if (!url) return;
+    void vscode.env.clipboard.writeText(url);
+    this.inform(vscode.l10n.t("portato: copied {0}", url));
+  }
+
+  /** Tag-group context: filter the tree down to this tag. */
+  filterTagCommand(item?: TagGroupItem): void {
+    if (item?.tag !== undefined) this.tree.setFilter({ kind: "tag", value: item.tag });
+  }
+
+  /** Tag-group context: add a tunnel preseeded with this tag. */
+  addTunnelWithTagCommand(item?: TagGroupItem): void {
+    void this.forms.openAdd(item?.tag);
+  }
+
   /** Tree context: delete a tunnel after an explicit confirmation. */
   async deleteTunnelCommand(item?: TuberItem): Promise<void> {
     const client = this.client;
@@ -890,9 +996,7 @@ class PortatoController implements vscode.Disposable {
     try {
       await client.deleteTuber(name);
       await this.refreshTubers();
-      void vscode.window.showInformationMessage(
-        vscode.l10n.t("portato: tunnel {0} deleted", name),
-      );
+      this.inform(vscode.l10n.t("portato: tunnel {0} deleted", name));
     } catch (e) {
       const plan = planTunnelError(e, name, vscode.l10n.t);
       if (plan.staleItem) void this.refreshTubers();
@@ -907,7 +1011,7 @@ class PortatoController implements vscode.Disposable {
     try {
       await client.reload();
       await this.refreshTubers();
-      void vscode.window.showInformationMessage(vscode.l10n.t("portato: config reloaded"));
+      this.inform(vscode.l10n.t("portato: config reloaded"));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       // applyReload answers 500 with the validation error in {"error"}.
@@ -1029,6 +1133,21 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("portato.openLanding", () =>
       controller.openLandingCommand(),
     ),
+    vscode.commands.registerCommand("portato.copyAddress", (item?: TuberItem) =>
+      controller.copyAddressCommand(item),
+    ),
+    vscode.commands.registerCommand("portato.openInBrowser", (item?: TuberItem) =>
+      controller.openInBrowserCommand(item),
+    ),
+    vscode.commands.registerCommand("portato.copySocksUrl", (item?: TuberItem) =>
+      controller.copySocksUrlCommand(item),
+    ),
+    vscode.commands.registerCommand("portato.filterTag", (item?: TagGroupItem) =>
+      controller.filterTagCommand(item),
+    ),
+    vscode.commands.registerCommand("portato.addTunnelWithTag", (item?: TagGroupItem) =>
+      controller.addTunnelWithTagCommand(item),
+    ),
   ];
 
   context.subscriptions.push(...disposables);
@@ -1042,12 +1161,20 @@ export function activate(context: vscode.ExtensionContext): void {
         void controller.refreshBinaryAvailable();
       }
       if (e.affectsConfiguration("portato.groupByTag")) controller.tree.refresh();
+      if (e.affectsConfiguration("portato.minLogLevel")) {
+        controller.applyMinLogLevelSetting();
+      }
     }),
   );
+  // Seed the daemon log filter from the setting (a per-session override
+  // via Set Log Level... still wins afterwards).
+  controller.applyMinLogLevelSetting();
   // The noBinary welcome needs the binary check; it runs in the background
   // and only ever refines "stopped" into "noBinary" (never blocks startup).
   void controller.refreshBinaryAvailable();
-  void controller.connect();
+  // The initial connect settles first: auto-start only fires for a daemon
+  // that stayed absent (never from the poll/reconnect paths).
+  void controller.connect().then(() => controller.maybeAutoStartDaemon());
 }
 
 export function deactivate(): void {}

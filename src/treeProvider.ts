@@ -8,9 +8,11 @@ import { STATE_ICONS, stateLabel } from "./stateUi";
 // driven icons, plus drag-and-drop reorder in the flat unfiltered list.
 // The daemon-absent / rejected / no-tunnels states render through
 // viewsWelcome (package.json, gated on the portato:viewState context key),
-// not through message rows. Menus in package.json key on
-// viewItem: "off" shows enable, everything else shows disable/restart, and
-// "prompting" (a tuber blocked on a prompt) additionally shows answerPrompt.
+// not through message rows. Menus in package.json key on the contextValue
+// form "<state|prompting>:<type>" with anchored regexes: /^off:/ shows
+// enable, the non-off states show disable/restart, /^prompting:/ adds
+// answerPrompt, and the type suffix gates the type-specific actions
+// (/:local$/ open in browser, /:dynamic$/ copy SOCKS URL).
 //
 // Element identity: VS Code keys selection/expansion by TreeItem.id, so
 // every item carries a stable one. Tuber names are unique by daemon
@@ -249,7 +251,11 @@ export class TuberItem extends vscode.TreeItem {
     // keeps "prompting" stable through the redial window where the daemon
     // briefly clears pending_host.
     const prompting = pendingPrompt(s) !== null || (pendingHosts?.has(s.name) ?? false);
-    item.contextValue = prompting ? "prompting" : state;
+    // contextValue carries state AND type ("connected:local") so menu
+    // when-clauses can gate type-specific actions (open in browser needs
+    // :local$, copy SOCKS URL needs :dynamic$). package.json matches with
+    // anchored regexes; the type suffix never reaches the user.
+    item.contextValue = `${prompting ? "prompting" : state}:${s.type}`;
     if (prompting) {
       // Single click re-opens the prompt (the dial blocks without bumping
       // attempts, so the notification alone can never re-ask).

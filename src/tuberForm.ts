@@ -157,12 +157,16 @@ export class TuberFormController {
 
   constructor(private readonly deps: TuberFormDeps) {}
 
-  async openAdd(): Promise<void> {
+  async openAdd(tag?: string): Promise<void> {
     if (!this.deps.getClient()) {
       void vscode.window.showErrorMessage(S.errNoClient);
       return;
     }
-    this.openPanel({ mode: "add", busy: false }, S.addTitle, prefillFrom(undefined), false);
+    const prefill = prefillFrom(undefined);
+    // "New tunnel with this tag" (tag-group context menu): preseed the
+    // tags field with the group's tag.
+    if (tag !== undefined) prefill.tags = tag;
+    this.openPanel({ mode: "add", busy: false }, S.addTitle, prefill, false);
   }
 
   async openEdit(name: string): Promise<void> {

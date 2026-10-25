@@ -92,6 +92,7 @@ src/
   stateUi.ts          shared per-state icon name + localized label (pure)
   daemonVersion.ts    MIN_DAEMON_VERSION + strict triad compare/classify (pure)
   binaryCheck.ts      X_OK binary resolution for the noBinary welcome (pure)
+  addrUrl.ts          context-action address/URL builders: wildcard->loopback (pure)
   diagnostics.ts      the extension's own LogOutputChannel (lazy, disposed on shutdown)
   logDedup.ts         LogTail ring diff (tail-anchored), applyPoll buffer math (pure)
   logsPoll.ts         poll gating + adaptive backoff delays (pure)

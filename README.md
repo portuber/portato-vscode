@@ -58,6 +58,9 @@ convenience subset.
 | `portato.binaryPath` | `portato` | Path to the `portato` binary used to start the daemon. Set it when VS Code cannot find `portato` on its PATH (common for GUI-launched VS Code on macOS). Machine scope: set it in user settings, not per workspace. |
 | `portato.socketPath` | `portato` default discovery | Explicit daemon socket path. Overrides discovery; use it if your shell exports `PORTATO_SOCKET` that a GUI-launched VS Code cannot see, or to point at a non-default daemon. Machine scope: set it in user settings, not per workspace. |
 | `portato.groupByTag` | `false` | Group tunnels by their first tag in the tree. |
+| `portato.minLogLevel` | `info` | Minimum level shown in the `Portato Logs` view. The **Portato: Set Log Level...** command overrides it for the current session. |
+| `portato.autoStartDaemon` | `false` | Start the daemon automatically when the Tunnels view opens and none is running. At most once per window, never after you stop the daemon yourself, and only when the `portato` binary resolves. Machine scope. |
+| `portato.showNotifications` | `true` | Informational notifications only (copy confirmations, filter results). Warnings, errors and passphrase/host-key prompts are always shown. |
 
 ## Requirements
 
