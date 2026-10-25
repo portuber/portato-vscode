@@ -1,31 +1,25 @@
 import * as fsp from "node:fs/promises";
-import * as http from "node:http";
 import * as net from "node:net";
 import type { Readable } from "node:stream";
 import { tokenPath } from "./discovery";
+import { rawRequest, rawStream, type SocketTracker } from "./rawHttp";
 import type { Healthz, LogEntry, PortatoConfig, ConfigTuber, TuberStatus } from "./types";
 
 // HTTP client over the daemon's unix socket. The transport mirrors
-// internal/client/client.go: the agent dials the socket, every request
-// attaches the bearer token read from tokenPath(socketPath), regular calls
-// time out after 5 s, and a 401 triggers exactly one token re-read + retry
-// (the token is regenerated on each daemon start, so a stale in-memory copy
-// is a normal race, not an attack). The token file's absence (--ipc-token
-// off) means: send no Authorization header.
+// internal/client/client.go: every request attaches the bearer token read
+// from tokenPath(socketPath), regular calls time out after 5 s, and a 401
+// triggers exactly one token re-read + retry (the token is regenerated on
+// each daemon start, so a stale in-memory copy is a normal race, not an
+// attack). The token file's absence (--ipc-token off) means: send no
+// Authorization header.
+//
+// The transport is raw HTTP over net.Socket (src/rawHttp.ts), NOT
+// node:http: VS Code patches http.request in the extension host
+// (vscode-proxy-agent) and routes unix-socket requests through DNS, which
+// fails with getaddrinfo ENOTFOUND under the default http.proxySupport
+// "override".
 
 const DEFAULT_TIMEOUT_MS = 5000;
-
-// Routes every connection of an http.Agent through the daemon's unix
-// socket (the URL host is a dummy).
-class UnixSocketAgent extends http.Agent {
-  constructor(private readonly socketPath: string) {
-    super();
-  }
-
-  override createConnection(): net.Socket {
-    return net.createConnection(this.socketPath);
-  }
-}
 
 export class HttpError extends Error {
   constructor(
@@ -51,8 +45,8 @@ async function readToken(socketPath: string): Promise<string> {
 }
 
 export class DaemonClient {
-  private readonly agent: UnixSocketAgent;
   private token: string;
+  private readonly sockets: SocketTracker = new Set();
 
   private constructor(
     readonly socketPath: string,
@@ -60,7 +54,6 @@ export class DaemonClient {
     private readonly timeoutMs: number,
   ) {
     this.token = token;
-    this.agent = new UnixSocketAgent(socketPath);
   }
 
   static async create(
@@ -79,14 +72,10 @@ export class DaemonClient {
     this.token = await readToken(this.socketPath);
   }
 
-  /** Release the socket pool (used by tests and on shutdown). */
+  /** Release open sockets (used by tests and on shutdown). */
   destroy(): void {
-    this.agent.destroy();
-  }
-
-  private url(p: string): string {
-    // Dummy host; the agent routes to the unix socket regardless.
-    return `http://portato${p}`;
+    for (const sock of this.sockets) sock.destroy();
+    this.sockets.clear();
   }
 
   private headers(extra?: Record<string, string>): Record<string, string> {
@@ -95,61 +84,50 @@ export class DaemonClient {
     return { ...h, ...extra };
   }
 
-  private requestOnce(
+  private async requestOnce(
     p: string,
     method: string,
     body: unknown,
-    timeoutMs: number | null,
+    timeoutMs: number,
   ): Promise<unknown> {
-    return new Promise((resolve, reject) => {
-      let payload: string | undefined;
-      const headers = this.headers();
-      if (body !== undefined) {
-        payload = JSON.stringify(body);
-        headers["Content-Type"] = "application/json";
-        headers["Content-Length"] = Buffer.byteLength(payload).toString();
+    const headers = this.headers();
+    let payload: Buffer | undefined;
+    if (body !== undefined) {
+      payload = Buffer.from(JSON.stringify(body), "utf8");
+      headers["Content-Type"] = "application/json";
+    }
+    const res = await rawRequest(
+      this.socketPath,
+      method,
+      p,
+      headers,
+      payload,
+      timeoutMs,
+      this.sockets,
+    );
+    const raw = res.body.toString("utf8");
+    let data: unknown;
+    if (raw.length > 0) {
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        data = undefined;
       }
-      const req = http.request(this.url(p), { agent: this.agent, method, headers }, (res) => {
-        const chunks: Buffer[] = [];
-        res.on("data", (c: Buffer) => chunks.push(c));
-        res.on("error", reject);
-        res.on("end", () => {
-          const raw = Buffer.concat(chunks).toString("utf8");
-          let data: unknown;
-          if (raw.length > 0) {
-            try {
-              data = JSON.parse(raw);
-            } catch {
-              data = undefined;
-            }
-          }
-          const status = res.statusCode ?? 0;
-          if (status >= 200 && status < 300) {
-            resolve(data);
-            return;
-          }
-          const msg =
-            (data as { error?: string } | undefined)?.error ?? `HTTP ${status}`;
-          reject(new HttpError(status, msg));
-        });
-      });
-      req.on("error", reject);
-      if (timeoutMs !== null && timeoutMs > 0) {
-        req.setTimeout(timeoutMs, () => {
-          req.destroy(new Error(`request to ${p} timed out after ${timeoutMs}ms`));
-        });
-      }
-      if (payload !== undefined) req.write(payload);
-      req.end();
-    });
+    }
+    if (res.status >= 200 && res.status < 300) {
+      return data;
+    }
+    const msg =
+      (data as { error?: string } | undefined)?.error ?? `HTTP ${res.status}`;
+    throw new HttpError(res.status, msg);
   }
 
   private async request(
     p: string,
-    opts: { method?: string; body?: unknown; timeoutMs?: number | null } = {},
+    opts: { method?: string; body?: unknown; timeoutMs?: number } = {},
   ): Promise<unknown> {
     const method = opts.method ?? "GET";
-    const timeoutMs = opts.timeoutMs === undefined ? this.timeoutMs : opts.timeoutMs;
+    const timeoutMs = opts.timeoutMs ?? this.timeoutMs;
     try {
       return await this.requestOnce(p, method, opts.body, timeoutMs);
     } catch (e) {
@@ -262,41 +240,25 @@ export class DaemonClient {
    * The caller consumes lines and destroys the stream to abort.
    */
   async eventsStream(): Promise<Readable> {
-    const openOnce = (): Promise<Readable> =>
-      new Promise<Readable>((resolve, reject) => {
-        const headers: Record<string, string> = {
-          Accept: "text/event-stream",
-          "Cache-Control": "no-cache",
-        };
-        if (this.token) headers["Authorization"] = `Bearer ${this.token}`;
-        let settled = false;
-        const timer = setTimeout(() => {
-          if (!settled) {
-            // Reject FIRST: req.destroy() only triggers the 'error' event,
-            // whose handler no-ops once `settled` is true.
-            done(new Error(`GET /events timed out after ${this.timeoutMs}ms`));
-            req.destroy();
-          }
-        }, this.timeoutMs);
-        const done = (err: Error | null, res?: http.IncomingMessage): void => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timer);
-          if (err) reject(err);
-          else resolve(res as Readable);
-        };
-        const req = http.request(this.url("/events"), { agent: this.agent, method: "GET", headers }, (res) => {
-          const status = res.statusCode ?? 0;
-          if (status >= 400) {
-            res.resume();
-            done(new HttpError(status, `GET /events failed: HTTP ${status}`));
-            return;
-          }
-          done(null, res);
-        });
-        req.on("error", (e) => done(e));
-        req.end();
+    const openOnce = async (): Promise<Readable> => {
+      const headers = this.headers({
+        Accept: "text/event-stream",
+        "Cache-Control": "no-cache",
       });
+      const res = await rawStream(
+        this.socketPath,
+        "GET",
+        "/events",
+        headers,
+        this.timeoutMs,
+        this.sockets,
+      );
+      if (res.status >= 400) {
+        res.stream.destroy();
+        throw new HttpError(res.status, `GET /events failed: HTTP ${res.status}`);
+      }
+      return res.stream;
+    };
     try {
       return await openOnce();
     } catch (e) {

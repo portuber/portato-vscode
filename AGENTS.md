@@ -68,6 +68,9 @@ src/
   types.ts            Status, State union, LogEntry -- mirror of the Go contract
   discovery.ts        socket path: override -> marker -> runtime path; token path
   daemonClient.ts     HTTP over unix socket, token transport, 401 retry
+  rawHttp.ts          raw HTTP/1.1 over net sockets: VS Code patches node:http
+                      in the extension host (proxy agent) and breaks unix
+                      sockets -- never use node:http for daemon calls
   sse.ts              SSE parser for /events: signal frames, heartbeat, reconnect
   statusBar.ts        pure status-bar rendering + context-key send decisions
   logDedup.ts         LogTail ring diff (tail-anchored), applyPoll buffer math (pure)
