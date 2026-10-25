@@ -11,6 +11,15 @@ updates:
     open-pull-requests-limit: 10
     commit-message:
       prefix: chore
+    ignore:
+      # @types/node must track the extension host's Node (Node 20 for
+      # engines.vscode ^1.90), not the newest Node release.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      # typescript >=6.1.0 (the v7 Go-port era) is outside
+      # typescript-eslint's peer range.
+      - dependency-name: typescript
+        versions: [">=6.1.0"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
