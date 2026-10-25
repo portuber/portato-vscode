@@ -1,11 +1,14 @@
 import * as vscode from "vscode";
-import { endpoint, pendingPrompt, type TuberStatus, type TuberState } from "./types";
+import { endpoint, pendingPrompt, type TuberStatus } from "./types";
 import { updatePendingHosts } from "./pendingHosts";
 import { groupsOf, matchesFilter, moveSteps, type TunnelFilter } from "./treeGroups";
+import { STATE_ICONS, stateLabel } from "./stateUi";
 
 // Sidebar tree: one item per tuber (flat, or grouped by first tag), state-
-// driven icons, the daemon-absent state with a Start action, plus drag-and-
-// drop reorder in the flat unfiltered list. Menus in package.json key on
+// driven icons, plus drag-and-drop reorder in the flat unfiltered list.
+// The daemon-absent / rejected / no-tunnels states render through
+// viewsWelcome (package.json, gated on the portato:viewState context key),
+// not through message rows. Menus in package.json key on
 // viewItem: "off" shows enable, everything else shows disable/restart, and
 // "prompting" (a tuber blocked on a prompt) additionally shows answerPrompt.
 //
@@ -14,40 +17,8 @@ import { groupsOf, matchesFilter, moveSteps, type TunnelFilter } from "./treeGro
 // contract (duplicate POST -> 409) and the first-tag grouping shows each
 // tuber exactly once, so the plain name is unique across the whole tree.
 
-const STATE_ICONS: Record<TuberState, string> = {
-  off: "circle-slash",
-  connecting: "sync~spin",
-  connected: "circle-filled",
-  // Static icon on purpose: reconnecting can last for hours (daemon backoff
-  // against a dead host), and a spinning ThemeIcon forces a constant renderer
-  // repaint for as long as the view is visible. "connecting" is short-lived,
-  // so it keeps the spinner.
-  reconnecting: "sync",
-  error: "error",
-};
-
 /** Recommended intra-tree mime type; the payload is { name: string }. */
 export const TUNNEL_DRAG_MIME = "application/vnd.code.tree.portatotunnels";
-
-/**
- * Localized state label for the row description and tooltip. The RAW enum
- * stays the contextValue (package.json when-clauses key on it); only what
- * the user reads is translated. Literals inside t(...) per the l10n rules.
- */
-function stateLabel(state: TuberState, t: typeof vscode.l10n.t): string {
-  switch (state) {
-    case "off":
-      return t("off");
-    case "connecting":
-      return t("connecting");
-    case "connected":
-      return t("connected");
-    case "reconnecting":
-      return t("reconnecting");
-    case "error":
-      return t("error");
-  }
-}
 
 /** Zero time (RFC3339) means "never connected" per the daemon contract. */
 function connectedAtLabel(iso: string): string {
@@ -66,12 +37,11 @@ export class TunnelsTreeProvider
   readonly dragMimeTypes = [TUNNEL_DRAG_MIME];
 
   private daemonSocket: string | undefined;
-  /** The daemon answered 401: alive, but rejecting the extension's token. */
-  private authRejected = false;
   /**
    * undefined = not fetched yet for the current daemon; [] = fetched, empty.
-   * The distinction keeps "No tunnels configured" from flashing on every
-   * connect/reconnect, because setDaemonState runs before the first fetch.
+   * The distinction keeps a spurious empty flash off the tree, because
+   * setDaemonState runs before the first fetch. Both map to zero rows now:
+   * the message states render through viewsWelcome (portato:viewState).
    */
   private statuses: TuberStatus[] | undefined;
   /**
@@ -102,11 +72,10 @@ export class TunnelsTreeProvider
     return vscode.workspace.getConfiguration("portato").get<boolean>("groupByTag") ?? false;
   }
 
-  /** undefined socket = daemon not reachable; the view offers Start. */
-  setDaemonState(socketPath: string | undefined, authRejected = false): void {
-    if (this.daemonSocket === socketPath && this.authRejected === authRejected) return;
+  /** undefined socket = daemon not reachable; rows only, no message items. */
+  setDaemonState(socketPath: string | undefined): void {
+    if (this.daemonSocket === socketPath) return;
     this.daemonSocket = socketPath;
-    this.authRejected = authRejected;
     this.statuses = undefined;
     this.statusesKey = undefined;
     this.pendingHosts.clear();
@@ -172,43 +141,13 @@ export class TunnelsTreeProvider
 
   private roots(): vscode.TreeItem[] {
     const t = vscode.l10n.t;
-    if (this.authRejected) {
-      const item = new vscode.TreeItem(
-        t("Daemon rejected the extension's credentials"),
-        vscode.TreeItemCollapsibleState.None,
-      );
-      item.description = t("IPC token mismatch -- check portato.socketPath or restart the daemon");
-      item.iconPath = new vscode.ThemeIcon("key");
-      item.command = {
-        command: "workbench.action.openSettings",
-        title: t("Open settings"),
-        arguments: ["portato.socketPath"],
-      };
-      return [item];
-    }
-    if (!this.daemonSocket) {
-      const item = new vscode.TreeItem(
-        t("Daemon not running"),
-        vscode.TreeItemCollapsibleState.None,
-      );
-      item.description = t("start it to manage tunnels");
-      item.iconPath = new vscode.ThemeIcon("debug-disconnect");
-      item.command = {
-        command: "portato.startDaemon",
-        title: t("Start Daemon"),
-      };
-      return [item];
-    }
+    // Every message state -- daemon down, rejected token, no tunnels --
+    // renders through viewsWelcome in package.json (gated on the
+    // portato:viewState context key), so those states are zero rows here.
+    // The one exception is "No tunnels match": tunnels exist, a filter
+    // hides them, and that row stays actionable (clear the filter).
     if (this.statuses === undefined) return [];
-    if (this.statuses.length === 0) {
-      const item = new vscode.TreeItem(
-        t("No tunnels configured"),
-        vscode.TreeItemCollapsibleState.None,
-      );
-      item.description = t("add one in the portato config");
-      item.iconPath = new vscode.ThemeIcon("info");
-      return [item];
-    }
+    if (this.statuses.length === 0) return [];
     const visible = this.visible();
     if (visible.length === 0) {
       const item = new vscode.TreeItem(t("No tunnels match"), vscode.TreeItemCollapsibleState.None);

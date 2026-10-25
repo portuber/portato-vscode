@@ -4,16 +4,21 @@ import { homedir } from "node:os";
 import { DaemonClient, probeSocket, httpStatusOf } from "./daemonClient";
 import { planTunnelError, planPromptError, AuthEpisode } from "./errors";
 import { resolveSocketPath } from "./discovery";
-import { settingOverride, startDaemon, stopDaemon } from "./daemonLifecycle";
+import { settingOverride, startDaemon, stopDaemon, binaryPath } from "./daemonLifecycle";
 import { askLogLevel, LogsView } from "./logsView";
 import { PromptCoordinator } from "./prompts";
 import { identityCandidates, type IdentityCandidate } from "./identityPaths";
 import { SseStream } from "./sse";
-import { renderBar, contextSend, type BarState } from "./statusBar";
+import { renderBar, contextSend, attentionCount, type BarState } from "./statusBar";
 import { TunnelsTreeProvider, TuberItem } from "./treeProvider";
 import { TuberFormController } from "./tuberForm";
 import { matchesFilter, type TunnelFilter } from "./treeGroups";
 import { pendingPrompt, isActive, type PromptKind, type TuberStatus } from "./types";
+import { buildPickRows, type PickerAction } from "./quickPick";
+import { deriveViewState } from "./viewState";
+import { classifyVersion, MIN_DAEMON_VERSION } from "./daemonVersion";
+import { isBinaryAvailable } from "./binaryCheck";
+import { diagWarn, disposeDiagnostics } from "./diagnostics";
 
 // Controller wiring: discovery -> client -> SSE -> tree/statusbar, plus the
 // daemon lifecycle commands and the prompt coordinator. All re-discovery and
@@ -58,6 +63,19 @@ class PortatoController implements vscode.Disposable {
   private disposed = false;
   private sseLive = false;
   private lastStatuses: TuberStatus[] = [];
+  // -- viewsWelcome facts (portato:viewState; derivation is pure) ---------
+  /** undefined = the async binary check has not answered yet. */
+  private binaryAvailable: boolean | undefined;
+  /** undefined = before the first connect attempt -- never guess. */
+  private daemonUp: boolean | undefined;
+  private authRejected = false;
+  /** false until a successful /tubers fetch on the current daemon. */
+  private statusesFetched = false;
+  private lastViewStateSent: string | undefined;
+  /** Last badge background applied; undefined = none (plain bar). */
+  private lastBadgeBgSent: string | undefined;
+  /** (socket, version) pairs already warned about this window session. */
+  private readonly versionWarned = new Set<string>();
   /**
    * Persistent-401 detection: a mismatch that survives fresh clients across
    * consecutive refresh cycles (each carrying a freshly-read token) is a
@@ -99,7 +117,31 @@ class PortatoController implements vscode.Disposable {
       },
     );
     this.updateStatusBar("disconnected");
+    // Clicking the bar opens the quick pick (daemon actions + tuber
+    // toggles); a bar without a command reads as a passive label.
+    this.statusBar.command = "portato.statusPicker";
+    // Pin the context key to "loading" before any await: viewsWelcome must
+    // never flash the "daemon not running" Start button during discovery.
+    this.syncViewState();
     this.statusBar.show();
+  }
+
+  /**
+   * portato:viewState gates the tree's viewsWelcome contents (loading |
+   * noBinary | stopped | rejected | empty | ok; pure math in viewState.ts).
+   * Cached like the other context keys -- setContext crosses into the
+   * renderer on every call.
+   */
+  private syncViewState(): void {
+    const v = deriveViewState({
+      binaryAvailable: this.binaryAvailable,
+      daemonUp: this.daemonUp,
+      authRejected: this.authRejected,
+      tuberCount: this.statusesFetched ? this.lastStatuses.length : undefined,
+    });
+    if (v === this.lastViewStateSent) return;
+    this.lastViewStateSent = v;
+    void vscode.commands.executeCommand("setContext", "portato:viewState", v);
   }
 
   /** Activate the connection: called on start, refresh, and on a timer. */
@@ -213,6 +255,11 @@ class PortatoController implements vscode.Disposable {
   private teardown(): void {
     this.releaseDaemon();
     this.tree.setDaemonState(undefined);
+    this.daemonUp = false;
+    this.authRejected = false;
+    this.statusesFetched = false;
+    this.lastStatuses = [];
+    this.syncViewState();
     this.updateStatusBar("disconnected");
   }
 
@@ -247,10 +294,45 @@ class PortatoController implements vscode.Disposable {
     const socket = await resolveSocketPath(probeSocket, settingOverride());
     if (!socket) throw new Error("daemon not running");
     const client = await DaemonClient.create(socket);
-    await client.healthz(); // wedged socket files must not count as "up"
+    const hz = await client.healthz(); // wedged socket files must not count as "up"
     // healthz passed -> the token matches: any earlier 401 episode is over.
     this.authEpisode.recordSuccess();
+    this.checkDaemonVersion(hz.version, socket);
     return client;
+  }
+
+  /**
+   * Daemon-version surfacing (warning-only by consult verdict): the check
+   * re-runs on every (re)connect, and the (socket, version) dedupe keeps a
+   * reconnect loop from re-toasting the same fact. A daemon upgrade that
+   * lands on a new below-MIN or unknown version warns again -- correctly.
+   */
+  private checkDaemonVersion(version: string | undefined, socket: string): void {
+    const verdict = classifyVersion(version);
+    if (verdict === "ok") return;
+    const key = `${socket}|${version ?? ""}`;
+    if (this.versionWarned.has(key)) return;
+    this.versionWarned.add(key);
+    const msg =
+      verdict === "belowMin"
+        ? vscode.l10n.t(
+            "portato: daemon version {0} is older than the recommended {1} -- some features may misbehave",
+            version ?? "?",
+            MIN_DAEMON_VERSION,
+          )
+        : verdict === "unrecognized"
+          ? // "dev" builds and pre-release tags: a value came back, we just
+            // cannot vouch for it -- do NOT claim the daemon is old.
+            vscode.l10n.t(
+              "portato: unrecognized daemon version {0} -- version check skipped",
+              version ?? "?",
+            )
+          : vscode.l10n.t(
+              "portato: could not determine the daemon version (portato older than {0}?)",
+              MIN_DAEMON_VERSION,
+            );
+    void vscode.window.showWarningMessage(msg);
+    diagWarn(msg);
   }
 
   /** SSE (re)connect: fresh discovery + token read on every attempt. */
@@ -277,12 +359,23 @@ class PortatoController implements vscode.Disposable {
     this.streamClient = client;
     this.adoptClient(client);
     this.tree.setDaemonState(client.socketPath);
+    // healthz passed inside makeClient: the daemon is up. Statuses are not
+    // fetched yet on this adopt -- the SSE first frame refetches at once,
+    // and until then viewState stays "loading" (no welcome flash).
+    this.daemonUp = true;
+    this.authRejected = false;
+    this.statusesFetched = false;
+    this.syncViewState();
     return client.eventsStream();
   }
 
   /** Disconnected presentation without tearing the SSE reconnect loop down. */
   private showDaemonGone(): void {
     this.lastStatuses = [];
+    this.daemonUp = false;
+    this.authRejected = false;
+    this.statusesFetched = false;
+    this.syncViewState();
     this.logs.stop();
     this.tree.setDaemonState(undefined);
     this.updateStatusBar("disconnected");
@@ -297,9 +390,13 @@ class PortatoController implements vscode.Disposable {
    */
   private showAuthRejected(): void {
     this.lastStatuses = [];
+    this.daemonUp = true; // answered 401: provably alive
+    this.authRejected = true;
+    this.statusesFetched = false;
+    this.syncViewState();
     this.logs.stop();
     this.maybeShowAuthMismatch();
-    this.tree.setDaemonState(undefined, true);
+    this.tree.setDaemonState(undefined);
     this.updateStatusBar("rejected");
   }
 
@@ -325,6 +422,12 @@ class PortatoController implements vscode.Disposable {
       if (client !== this.client || seq !== this.refreshSeq) return true;
       this.authEpisode.recordSuccess();
       this.lastStatuses = statuses;
+      // A successful fetch proves the daemon end to end: pin the welcome
+      // facts before rendering, so ok/empty never lag behind the tree.
+      this.daemonUp = true;
+      this.authRejected = false;
+      this.statusesFetched = true;
+      this.syncViewState();
       this.tree.setStatuses(statuses);
       this.coordinator.sync(statuses);
       for (const s of statuses) this.coordinator.offer(s);
@@ -377,9 +480,8 @@ class PortatoController implements vscode.Disposable {
         settings,
       )
       .then((pick) => {
-        if (pick === restart) {
-          void this.stopDaemonCommand().then(() => this.startDaemonCommand());
-        } else if (pick === settings) {
+        if (pick === restart) void this.restartDaemonSequence();
+        else if (pick === settings) {
           void vscode.commands.executeCommand(
             "workbench.action.openSettings",
             "portato.socketPath",
@@ -635,9 +737,7 @@ class PortatoController implements vscode.Disposable {
 
   async stopDaemonCommand(): Promise<void> {
     try {
-      const out = await stopDaemon();
-      this.teardown();
-      this.schedulePoll();
+      const out = await this.stopDaemonCore();
       if (out) void vscode.window.showInformationMessage(vscode.l10n.t("portato: {0}", out));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -647,13 +747,48 @@ class PortatoController implements vscode.Disposable {
     }
   }
 
+  /**
+   * Stop core (CLI stop + teardown); THROWS on failure so chained flows
+   * (restart) can distinguish "stopped" from "stop failed" -- a follow-up
+   * start after a failed stop would only bounce off the daemon's flock.
+   */
+  private async stopDaemonCore(): Promise<string> {
+    const out = await stopDaemon();
+    this.teardown();
+    this.schedulePoll();
+    return out;
+  }
+
+  /** Stop then start, halting at the first failure with its own message. */
+  private async restartDaemonSequence(): Promise<void> {
+    try {
+      const out = await this.stopDaemonCore();
+      if (out) void vscode.window.showInformationMessage(vscode.l10n.t("portato: {0}", out));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      void vscode.window.showErrorMessage(
+        vscode.l10n.t("portato: failed to stop daemon: {0}", msg),
+      );
+      return;
+    }
+    await this.startDaemonCommand();
+  }
+
   async tunnelCommand(
     action: "enable" | "disable" | "restart",
     item: TuberItem | undefined,
   ): Promise<void> {
-    const client = this.client;
     const name = item?.status.name;
-    if (!client || !name) return;
+    if (name) await this.tunnelAction(action, name);
+  }
+
+  /** Name-based core shared by the tree items and the quick pick. */
+  private async tunnelAction(
+    action: "enable" | "disable" | "restart",
+    name: string,
+  ): Promise<void> {
+    const client = this.client;
+    if (!client) return;
     try {
       if (action === "enable") await client.enable(name);
       else if (action === "disable") await client.disable(name);
@@ -664,6 +799,69 @@ class PortatoController implements vscode.Disposable {
       if (plan.staleItem) void this.refreshTubers();
       void vscode.window.showErrorMessage(plan.message);
     }
+  }
+
+  /**
+   * Status-bar click: the quick pick (daemon actions + per-tuber rows; pure
+   * building in quickPick.ts). A tuber blocked on a prompt opens that
+   * prompt instead of toggling -- the dial is blocked either way.
+   */
+  async statusPickerCommand(): Promise<void> {
+    const t = vscode.l10n.t;
+    const rows = buildPickRows(
+      {
+        daemonRunning: this.lastDaemonRunningSent ?? false,
+        statuses: this.lastStatuses,
+        isRememberedHost: (name) => this.pendingHosts.has(name),
+      },
+      t,
+    );
+    const items = rows.map((r) => ({
+      label: r.label,
+      description: r.description,
+      detail: r.detail,
+      kind: r.separator ? vscode.QuickPickItemKind.Separator : undefined,
+      action: r.action,
+    }));
+    const picked = (await vscode.window.showQuickPick(items, {
+      title: t("Portato"),
+      placeHolder: t("Pick a daemon action or a tunnel to toggle"),
+      matchOnDescription: true,
+      matchOnDetail: true,
+    })) as { action?: PickerAction } | undefined;
+    const action = picked?.action;
+    if (!action) return;
+    switch (action.kind) {
+      case "startDaemon":
+        return this.startDaemonCommand();
+      case "stopDaemon":
+        return this.stopDaemonCommand();
+      case "restartDaemon":
+        return this.restartDaemonSequence();
+      case "showLogs":
+        return this.showLogsCommand();
+      case "addTunnel":
+        return this.addTunnelCommand();
+      case "prompt":
+        return this.coordinator.promptFor(
+          action.status,
+          this.pendingHosts.has(action.status.name),
+        );
+      case "toggle":
+        return this.tunnelAction(action.action, action.status.name);
+    }
+  }
+
+  /** noBinary welcome: async, never gates activation. */
+  async refreshBinaryAvailable(): Promise<void> {
+    const available = await isBinaryAvailable(binaryPath(), process.env.PATH ?? "");
+    if (this.binaryAvailable === available) return;
+    this.binaryAvailable = available;
+    this.syncViewState();
+  }
+
+  openLandingCommand(): void {
+    void vscode.env.openExternal(vscode.Uri.parse("https://portuber.github.io/portato/"));
   }
 
   /** View title: add a tunnel through the webview form. */
@@ -723,11 +921,21 @@ class PortatoController implements vscode.Disposable {
     // sseLive is owned by onStreamChange only; Refresh and the poll timer
     // call updateStatusBar("connecting") while a stream may already be live.
     const connected = this.lastStatuses.filter(isActive).length;
-    const r = renderBar(state, this.socket, connected, vscode.l10n.t);
+    // Badge tally (consult verdict): error tubers + blocked prompts -- see
+    // the pure attentionCount; the controller only feeds the statuses.
+    const attention = attentionCount(this.lastStatuses);
+    const r = renderBar(state, this.socket, connected, attention, vscode.l10n.t);
     // Skip no-op writes: repeated identical text/tooltip still cross into
     // the renderer (the poll loop and teardown hit this every 10 s).
     if (this.statusBar.text !== r.text) this.statusBar.text = r.text;
     if (this.statusBar.tooltip !== r.tooltip) this.statusBar.tooltip = r.tooltip;
+    const bg = r.attention > 0 ? "statusBarItem.warningBackground" : undefined;
+    if (bg !== this.lastBadgeBgSent) {
+      this.lastBadgeBgSent = bg;
+      this.statusBar.backgroundColor = bg
+        ? new vscode.ThemeColor(bg)
+        : undefined;
+    }
     // The context key must reflect a proven daemon connection, not the label:
     // "connecting" runs before any probe, so flipping here would make the
     // toolbar swap Start<->Stop on every failed poll cycle.
@@ -764,6 +972,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const disposables = [
     controller,
+    // The diagnostics channel is created lazily on first write; this thin
+    // disposable disposes it whenever it happens to exist by shutdown.
+    new vscode.Disposable(disposeDiagnostics),
     vscode.commands.registerCommand("portato.refresh", () => controller.connect()),
     vscode.commands.registerCommand("portato.startDaemon", () =>
       controller.startDaemonCommand(),
@@ -812,6 +1023,12 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("portato.reloadConfig", () =>
       controller.reloadConfigCommand(),
     ),
+    vscode.commands.registerCommand("portato.statusPicker", () =>
+      controller.statusPickerCommand(),
+    ),
+    vscode.commands.registerCommand("portato.openLanding", () =>
+      controller.openLandingCommand(),
+    ),
   ];
 
   context.subscriptions.push(...disposables);
@@ -821,9 +1038,15 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("portato.socketPath")) void controller.connect();
+      if (e.affectsConfiguration("portato.binaryPath")) {
+        void controller.refreshBinaryAvailable();
+      }
       if (e.affectsConfiguration("portato.groupByTag")) controller.tree.refresh();
     }),
   );
+  // The noBinary welcome needs the binary check; it runs in the background
+  // and only ever refines "stopped" into "noBinary" (never blocks startup).
+  void controller.refreshBinaryAvailable();
   void controller.connect();
 }
 

@@ -19,6 +19,13 @@ config Reload (the daemon watches its own config), and l10n -- every UI
 string goes through `vscode.l10n.t` / `package.nls.json` (parity is pinned
 by `src/test/nls.test.ts`; pure modules take an injected translator with an
 identity default, see `renderBar` / `validateFields`).
+v0.2.0 adds the UX layer: viewsWelcome driven by the `portato:viewState`
+context key (loading/noBinary/stopped/rejected/empty/ok, pure derivation in
+`src/viewState.ts`; the tree renders zero rows outside the ok-ish states),
+a status-bar quick pick (`src/quickPick.ts`) and an attention indicator --
+error/prompting tunnels append an `$(alert) N` tally and paint
+`statusBarItem.warningBackground` (`StatusBarItem.badge` is proposed API
+and cannot ship) -- plus the warning-only daemon-version check.
 The extension is unix-only (macOS/Linux); the daemon's Windows named pipe is
 not implemented (README "Platform support").
 
@@ -79,7 +86,13 @@ src/
                       in the extension host (proxy agent) and breaks unix
                       sockets -- never use node:http for daemon calls
   sse.ts              SSE parser for /events: signal frames, heartbeat, reconnect
-  statusBar.ts        pure status-bar rendering + context-key send decisions
+  statusBar.ts        pure status-bar rendering, attention tally, context-key decisions
+  viewState.ts        portato:viewState derivation behind viewsWelcome (pure)
+  quickPick.ts        status-bar quick pick: daemon actions + tuber rows (pure)
+  stateUi.ts          shared per-state icon name + localized label (pure)
+  daemonVersion.ts    MIN_DAEMON_VERSION + strict triad compare/classify (pure)
+  binaryCheck.ts      X_OK binary resolution for the noBinary welcome (pure)
+  diagnostics.ts      the extension's own LogOutputChannel (lazy, disposed on shutdown)
   logDedup.ts         LogTail ring diff (tail-anchored), applyPoll buffer math (pure)
   logsPoll.ts         poll gating + adaptive backoff delays (pure)
   logsView.ts         "Portato Logs" output channel: poll /logs, filter, min level
@@ -122,6 +135,9 @@ src/
   VS Code may not see shell exports -- the `portato.socketPath` override
   exists for that.
 - **`GET /healthz` -> `{"ok":true}`; since daemon v1.11.0 also `version`.**
+  The extension surfaces `version` warning-only (src/daemonVersion.ts,
+  `MIN_DAEMON_VERSION` 1.11.0; missing or unparseable versions warn and
+  never block).
 - **`PUT /tubers/{name}` replaces the tuber wholesale** -- the edit form must
   round-trip every field of the config Tuber or data is silently lost.
   `move` takes `?delta=+-N` in the query, no body, and **swaps** with the

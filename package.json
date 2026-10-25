@@ -164,6 +164,40 @@
         "category": "Portato",
         "title": "%cmd.reloadConfig.title%",
         "icon": "$(sync)"
+      },
+      {
+        "command": "portato.statusPicker",
+        "category": "Portato",
+        "title": "%cmd.statusPicker.title%",
+        "icon": "$(list-selection)"
+      },
+      {
+        "command": "portato.openLanding",
+        "category": "Portato",
+        "title": "%cmd.openLanding.title%",
+        "icon": "$(link-external)"
+      }
+    ],
+    "viewsWelcome": [
+      {
+        "view": "portatoTunnels",
+        "contents": "%welcome.noBinary%",
+        "when": "portato:viewState == noBinary"
+      },
+      {
+        "view": "portatoTunnels",
+        "contents": "%welcome.stopped%",
+        "when": "portato:viewState == stopped"
+      },
+      {
+        "view": "portatoTunnels",
+        "contents": "%welcome.rejected%",
+        "when": "portato:viewState == rejected"
+      },
+      {
+        "view": "portatoTunnels",
+        "contents": "%welcome.empty%",
+        "when": "portato:viewState == empty"
       }
     ],
     "menus": {
