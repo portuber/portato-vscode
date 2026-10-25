@@ -175,4 +175,5 @@ src/
   bundle directory and the package.json `"l10n"` field land together with
   the first actual translation.
 - No commits or pushes without explicit permission.
-- Task plan: `~/.opencode/plan/portato-vscode.md`.
+  (Task plans live in GitHub issues -- `~/.opencode/plan/` files are
+  machine-local personal notes, never referenced from the repo.)
