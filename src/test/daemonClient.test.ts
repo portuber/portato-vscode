@@ -75,9 +75,12 @@ describe("DaemonClient", () => {
       token: "old-token",
       handler: async (req, res) => {
         if (req.headers["authorization"] !== "Bearer new-token") {
-          await json(res, 401, { error: "unauthorized" });
-          // Rotate the token as a daemon restart would.
+          // Rotate the token as a daemon restart would -- BEFORE the 401
+          // reaches the client, so the retry's re-read deterministically
+          // sees the new file (a res.end() flush can race the write on a
+          // slow runner and the retry would carry the stale token).
           await daemon.setToken("new-token");
+          await json(res, 401, { error: "unauthorized" });
           return;
         }
         await json(res, 200, { ok: true });
@@ -281,9 +284,12 @@ describe("DaemonClient", () => {
       token: "old-token",
       handler: async (req, res) => {
         if (req.headers["authorization"] !== "Bearer new-token") {
-          await json(res, 401, { error: "unauthorized" });
-          // Rotate the token as a daemon restart would.
+          // Rotate the token as a daemon restart would -- BEFORE the 401
+          // reaches the client, so the retry's re-read deterministically
+          // sees the new file (a res.end() flush can race the write on a
+          // slow runner and the retry would carry the stale token).
           await daemon.setToken("new-token");
+          await json(res, 401, { error: "unauthorized" });
           return;
         }
         res.writeHead(200, { "Content-Type": "text/event-stream" });
