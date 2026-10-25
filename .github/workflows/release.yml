@@ -1,14 +1,17 @@
 # Release: on a pushed vX.Y.Z tag (cut by `make release-patch|minor|major`),
 # run the same checks as CI, package the .vsix, verify the tag matches
 # package.json, publish a GitHub Release with the .vsix + checksums and the
-# matching CHANGELOG.md section as the body, then publish to the Marketplace.
-# The Marketplace publish uses the VSCE_PAT repository secret (an Azure DevOps
-# personal access token with the Marketplace "Manage" scope).
+# matching CHANGELOG.md section as the body, then publish to the Marketplace
+# and, when the OVSX_PAT repository secret is set, to Open VSX. The
+# Marketplace publish uses the VSCE_PAT secret (an Azure DevOps personal
+# access token with the Marketplace "Manage" scope); Open VSX uses OVSX_PAT
+# (an open-vsx.org token for the `portuber` namespace).
 #
-# Order matters: the GitHub Release is created before the Marketplace publish
-# so that a transient publish failure (expired PAT, Marketplace hiccup) can be
-# fixed by re-running the workflow -- action-gh-release upserts the existing
-# release, and vsce publish simply retries.
+# Order matters: the GitHub Release is created before the marketplace
+# publishes so that a transient publish failure (expired PAT, registry hiccup)
+# can be fixed by re-running the workflow -- action-gh-release upserts the
+# existing release, and both publishes are --skip-duplicate idempotent.
+# Actions are pinned to commit SHAs; Dependabot proposes the bumps.
 name: release
 
 on:
@@ -24,12 +27,13 @@ jobs:
     name: package and publish
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - run: npm run lint
       - run: npm run typecheck
       - run: npm run compile
       - run: npm test
@@ -60,7 +64,7 @@ jobs:
             exit 1
           fi
       - name: GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           body_path: release-notes.md
           fail_on_unmatched_files: true
@@ -70,9 +74,28 @@ jobs:
       - name: Publish to the Marketplace
         # --packagePath publishes exactly the artifact whose checksum is in
         # checksums.txt: without it vsce re-packs from the working directory,
-        # which by now also contains checksums.txt / release-notes.md. vsce
-        # reads the token from the VSCE_PAT environment variable, keeping the
+        # which by now also contains checksums.txt / release-notes.md.
+        # --skip-duplicate keeps a workflow re-run after a successful publish
+        # green instead of failing on "version already exists". vsce reads
+        # the token from the VSCE_PAT environment variable, keeping the
         # secret out of argv.
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: npx vsce publish --packagePath "portato-vscode-${GITHUB_REF_NAME#v}.vsix"
+        run: npx vsce publish --packagePath "portato-vscode-${GITHUB_REF_NAME#v}.vsix" --skip-duplicate
+      - name: Publish to Open VSX
+        # Best-effort mirror: open-vsx.org serves the extensions used by
+        # VSCodium and similar editors. The OVSX_PAT repository secret is
+        # optional until the namespace is claimed -- without it this step
+        # prints a notice and exits 0, so a missing secret never blocks a
+        # release. --packagePath publishes the exact checksummed artifact;
+        # --skip-duplicate keeps re-runs idempotent, as above. ovsx is an
+        # exact-pinned devDependency (lockfile + npm ci + Dependabot), so
+        # npx runs the audited local binary, not whatever is latest on npm.
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          if [ -z "${OVSX_PAT:-}" ]; then
+            echo "OVSX_PAT is not set - skipping the Open VSX publish."
+            exit 0
+          fi
+          npx ovsx publish --packagePath "portato-vscode-${GITHUB_REF_NAME#v}.vsix" --skip-duplicate

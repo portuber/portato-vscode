@@ -1,8 +1,11 @@
-# CI: lint, typecheck, bundle, hermetic unit tests, and a packaged .vsix on
-# every push and pull request. Integration tests (npm run test:integration)
-# are deliberately NOT run here: they need a real `portato` daemon binary,
-# which lives in the separate portato Go repo; they run on dev machines with
-# $PORTATO_BINARY or /opt/homebrew/bin/portato present.
+# CI: lint, typecheck, bundle, unit tests, integration tests against a real
+# pinned portato daemon, and a packaged .vsix on every push and pull request.
+# The integration suite downloads the portato binary from the Go repo's
+# GitHub release (PORTATO_VERSION below, kept at MIN_DAEMON_VERSION --
+# src/daemonVersion.ts) and points the tests at it via PORTATO_BINARY;
+# locally the same suite falls back to $PORTATO_BINARY or
+# /opt/homebrew/bin/portato and skips when neither is present.
+# Actions are pinned to commit SHAs; Dependabot proposes the bumps.
 name: CI
 
 on:
@@ -14,12 +17,20 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  PORTATO_VERSION: v1.11.0
+
 jobs:
   build:
-    runs-on: ubuntu-latest
+    name: build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -28,10 +39,36 @@ jobs:
       - run: npm run typecheck
       - run: npm run compile
       - run: npm test
+      - name: Fetch the portato daemon binary
+        run: |
+          # goreleaser keeps the raw .Os/.Arch (only darwin is rewritten to
+          # macOS), so map uname output explicitly: Linux -> linux,
+          # aarch64 -> arm64.
+          case "$(uname -s)" in
+            Darwin) os=macOS ;;
+            Linux) os=linux ;;
+            *) echo "unsupported OS: $(uname -s)"; exit 1 ;;
+          esac
+          case "$(uname -m)" in
+            x86_64|amd64) arch=x86_64 ;;
+            arm64|aarch64) arch=arm64 ;;
+            *) echo "unsupported arch: $(uname -m)"; exit 1 ;;
+          esac
+          url="https://github.com/portuber/portato/releases/download/${PORTATO_VERSION}/portato_${PORTATO_VERSION#v}_${os}_${arch}.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" | tar -xz portato
+          ./portato version
+      - name: Integration tests
+        env:
+          PORTATO_BINARY: ${{ github.workspace }}/portato
+        run: npm run test:integration
       - name: Package
         run: npm run package
       - name: Upload .vsix
-        uses: actions/upload-artifact@v4
+        # One artifact per commit is enough; packaging is node-only, so the
+        # ubuntu build carries it.
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: portato-vscode-vsix
           path: "*.vsix"

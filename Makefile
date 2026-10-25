@@ -7,9 +7,10 @@
 # of two ways:
 #   make release-patch | release-minor | release-major  -- bump from the latest tag
 #   make release VERSION=vX.Y.Z                        -- explicit override
-# Before touching the remote it runs the same checks CI runs (typecheck + unit
-# tests) so a broken tree never gets a tag, verifies CHANGELOG.md already has a
-# section for the new version (Keep a Changelog discipline), and asks y/N.
+# Before touching the remote it runs the same checks CI runs (lint,
+# typecheck + unit tests) so a broken tree never gets a tag, verifies
+# CHANGELOG.md already has a section for the new version (Keep a Changelog
+# discipline), and asks y/N.
 .PHONY: release release-patch release-minor release-major
 
 release-patch:
@@ -47,8 +48,8 @@ release:
 	(git rev-parse -q --verify "refs/tags/$$newtag" >/dev/null) && { echo "$$newtag already exists"; exit 1; } || true; \
 	newver=$${newtag#v}; \
 	grep -qF "## [$$newver]" CHANGELOG.md || { echo "CHANGELOG.md has no '## [$$newver]' section -- write it first"; exit 1; }; \
-	echo "preflight  : npm run typecheck + npm test (what the release workflow runs)"; \
-	if ! out=$$(npm run typecheck 2>&1 && npm test 2>&1); then \
+	echo "preflight  : npm run lint + typecheck + npm test (what CI runs)"; \
+	if ! out=$$(npm run lint 2>&1 && npm run typecheck 2>&1 && npm test 2>&1); then \
 		printf '%s\n' "$$out" | tail -30; \
 		echo "aborting: preflight failed"; \
 		exit 1; \

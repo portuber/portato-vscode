@@ -1,0 +1,19 @@
+# Dependabot: weekly update proposals for the dev dependencies (the shipped
+# extension has zero runtime dependencies) and for the commit-SHA-pinned
+# actions in .github/workflows. Commits follow the repo's Conventional
+# Commits rule; PRs are plain proposals -- nothing merges without review.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: chore
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore

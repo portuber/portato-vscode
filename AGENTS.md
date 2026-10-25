@@ -70,7 +70,9 @@ Code): `npm test` -- unit tests of the client against a fake HTTP server on a
 temporary unix socket in Node (no real daemon, hermetic for CI);
 `npm run test:integration` -- suite against a real `portato daemon` under
 temporary `--socket` + `XDG_CONFIG_HOME`/`XDG_STATE_HOME` (binary from
-`$PORTATO_BINARY` or `/opt/homebrew/bin/portato`; skips when absent);
+`$PORTATO_BINARY` or `/opt/homebrew/bin/portato`; skips when absent); CI
+(.github/workflows/ci.yml) runs it too on ubuntu and macOS against a pinned
+`PORTATO_VERSION` release binary;
 `npm run test:all` -- both.
 
 Releases: `make release-patch|minor|major` (or `make release VERSION=vX.Y.Z`)

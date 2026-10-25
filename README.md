@@ -92,9 +92,10 @@ npm run test:integration # against a disposable real daemon (needs portato)
 npm run package          # vsce package -> .vsix
 ```
 
-CI runs typecheck, compile, unit tests and packaging on every push and PR
-(.github/workflows/ci.yml); integration tests need a real daemon and stay
-on dev machines.
+CI runs lint, typecheck, compile, unit and integration tests and packaging
+on every push and PR (.github/workflows/ci.yml), on both ubuntu and macOS;
+the integration suite runs against a pinned `portato` release
+(`PORTATO_VERSION` in the workflow) downloaded per run.
 
 ## Releasing
 
