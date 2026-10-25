@@ -2,7 +2,7 @@
 # built-in defaults rather than replacing them; entries that overlap the
 # defaults are kept for clarity. The runtime payload is out/extension.js +
 # package.json + package.nls.json + README.md + LICENSE + media/
-# (+ CHANGELOG.md when it exists).
+# (+ CHANGELOG.md when it exists), minus the demo animation below.
 .vscodeignore
 .vscode/**
 .git
@@ -22,3 +22,6 @@ checksums.txt
 release-notes.md
 package-lock.json
 *.vsix
+# README demo animation: GitHub serves it from the repo; shipping 1.3 MB in
+# the vsix only bloats the Marketplace download.
+media/demo.gif

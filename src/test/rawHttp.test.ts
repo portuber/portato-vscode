@@ -136,6 +136,44 @@ test("rawRequest: silent server hits the idle timeout, not a close race", async 
   );
 });
 
+test("rawRequest: body short of Content-Length rejects (clean close is not success)", async () => {
+  await withServer(
+    (sock) => {
+      sock.on("data", () => {
+        // Promises 10 bytes, delivers 5, then closes cleanly: a truncated
+        // exchange that a plain EOF-based reader would resolve as success.
+        sock.write(b("HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\nshort"));
+        sock.end();
+      });
+    },
+    async ({ socketPath }) => {
+      await assert.rejects(
+        () => rawRequest(socketPath, "GET", "/tubers", {}, undefined, 1000),
+        /does not match Content-Length/,
+      );
+    },
+  );
+});
+
+test("rawRequest: exact Content-Length body resolves", async () => {
+  await withServer(
+    (sock) => {
+      sock.on("data", () => {
+        const body = b('{"ok":true}');
+        sock.write(
+          b(`HTTP/1.1 200 OK\r\nContent-Length: ${body.length}\r\n\r\n`),
+        );
+        sock.end(body);
+      });
+    },
+    async ({ socketPath }) => {
+      const res = await rawRequest(socketPath, "GET", "/healthz", {}, undefined, 1000);
+      assert.equal(res.status, 200);
+      assert.equal(res.body.toString("utf8"), '{"ok":true}');
+    },
+  );
+});
+
 test("rawStream: chunked response whose first frame coalesced with the headers", async () => {
   await withServer(
     (sock) => {

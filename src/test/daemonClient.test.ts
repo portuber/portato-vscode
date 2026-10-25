@@ -2,7 +2,7 @@ import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import * as fsp from "node:fs/promises";
 import type * as http from "node:http";
-import { DaemonClient } from "../daemonClient";
+import { DaemonClient, probeSocket } from "../daemonClient";
 import type { TuberStatus } from "../types";
 import { makeTempDir, sleep, startFakeDaemon, type FakeDaemon } from "./fakeDaemon";
 
@@ -323,6 +323,56 @@ describe("DaemonClient", () => {
     t.after(() => client.destroy());
     await assert.rejects(() => client.eventsStream(), /HTTP 401/);
     assert.equal(daemon.requests.length, 2); // original + one retry
+  });
+
+  it("2xx with a non-JSON body rejects instead of returning undefined", async (t) => {
+    const daemon = await startFakeDaemon({
+      dir,
+      token: TOKEN,
+      handler: async (_req, res) => {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end("<html>not json</html>");
+      },
+    });
+    t.after(async () => {
+      await daemon.close();
+    });
+    const client = await DaemonClient.create(daemon.socketPath);
+    t.after(() => client.destroy());
+    await assert.rejects(() => client.tubers(), /malformed JSON/);
+  });
+});
+
+describe("probeSocket", () => {
+  let dir: string;
+
+  before(async () => {
+    dir = await makeTempDir();
+  });
+
+  after(async () => {
+    await fsp.rm(dir, { recursive: true, force: true });
+  });
+
+  it("a 401-answering socket is ALIVE (unreadable token, live daemon)", async (t) => {
+    // The handler answers 401 no matter what token the probe presents --
+    // exactly what a live daemon with an unreadable token file looks like
+    // to the probe (readToken fails -> no Authorization header -> 401).
+    const daemon = await startFakeDaemon({
+      dir,
+      token: TOKEN,
+      handler: async (_req, res) => {
+        await json(res, 401, { error: "unauthorized" });
+      },
+    });
+    t.after(async () => {
+      await daemon.close();
+    });
+    assert.equal(await probeSocket(daemon.socketPath, 1000), true);
+  });
+
+  it("connection refused (no listener) is not running", async () => {
+    assert.equal(await probeSocket(`${dir}/nothing-here.sock`, 500), false);
   });
 });
 

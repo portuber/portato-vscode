@@ -23,12 +23,17 @@
     "proxy"
   ],
   "engines": {
-    "vscode": "^1.85.0",
+    "vscode": "^1.90.0",
     "node": ">=20"
   },
   "categories": [
     "Other"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    }
+  },
   "extensionKind": [
     "ui"
   ],
@@ -305,11 +310,13 @@
         "portato.binaryPath": {
           "type": "string",
           "default": "portato",
+          "scope": "machine",
           "markdownDescription": "%cfg.binaryPath.desc%"
         },
         "portato.socketPath": {
           "type": "string",
           "default": "",
+          "scope": "machine",
           "markdownDescription": "%cfg.socketPath.desc%"
         },
         "portato.groupByTag": {
@@ -332,7 +339,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.17.0",
-    "@types/vscode": "^1.85.0",
+    "@types/vscode": "^1.90.0",
     "@vscode/vsce": "^3.0.0",
     "esbuild": "^0.25.0",
     "typescript": "^5.4.0"

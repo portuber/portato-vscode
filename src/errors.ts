@@ -70,6 +70,22 @@ export function planPromptError(
 }
 
 /**
+ * Error surface for the add/edit form submit. 409 is the daemon's
+ * duplicate-name rejection on POST /tubers ONLY: a rename onto an
+ * existing name fails daemon-side config validation and comes back as a
+ * 400 (raw text). A raw daemon-side English string helps nobody.
+ */
+export function planFormError(
+  e: unknown,
+  t: Translate = identityT,
+): string {
+  if (httpStatusOf(e) === 409) {
+    return t("portato: a tunnel with this name already exists");
+  }
+  return errText(e);
+}
+
+/**
  * Gating for the persistent-401 episode. A single 401 that survives the
  * client's internal re-read+retry can be a daemon-restart race; a 401 on
  * consecutive refresh cycles (each cycle builds a FRESH client with a

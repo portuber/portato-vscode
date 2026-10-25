@@ -115,6 +115,13 @@ export class DaemonClient {
       }
     }
     if (res.status >= 200 && res.status < 300) {
+      // A 2xx body that is not parseable JSON is a corrupt exchange, not a
+      // usable "undefined": callers like tubers() would render it as an
+      // empty list and wipe the tree. Fail loudly instead (plain Error: no
+      // HTTP status is at fault).
+      if (raw.length > 0 && data === undefined) {
+        throw new Error(`malformed JSON in ${method} ${p} response (${raw.length} bytes)`);
+      }
       return data;
     }
     const msg =
@@ -277,6 +284,13 @@ export class DaemonClient {
  * Liveness probe: /healthz within `timeoutMs`. Used by discovery and the
  * daemon lifecycle; one shared implementation so the timeout and the
  * wedged-socket treatment stay identical everywhere.
+ *
+ * ANY HTTP answer -- 401 included -- counts as alive: a live daemon whose
+ * token file is unreadable answers /healthz with 401, and reporting it as
+ * "not running" would tempt a second daemon spawn that only loses the
+ * single-instance flock. The caller's own healthz() then hits its 401 path
+ * and shows the rejected-credentials UX. Only connection-level failures
+ * (refused, no socket, timeout) mean "not running".
  */
 export async function probeSocket(
   socketPath: string,
@@ -290,7 +304,9 @@ export async function probeSocket(
     } finally {
       client.destroy();
     }
-  } catch {
-    return false;
+  } catch (e) {
+    // Any HTTP answer (HttpError, 401 included) = a daemon owns the
+    // socket; only transport-level throwables mean "not running".
+    return e instanceof HttpError;
   }
 }

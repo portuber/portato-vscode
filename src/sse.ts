@@ -110,6 +110,28 @@ export class SseStream {
     }
   }
 
+  /**
+   * The daemon was just proven live by someone else (Start Daemon, a
+   * Refresh) while the stream sits in its reconnect backoff: skip the
+   * remaining delay and reconnect now, with the backoff reset. Acts ONLY
+   * while a reconnect timer is actually pending: a connect already in
+   * flight needs no kick, and a second concurrent open() would double-run
+   * discovery/adoption in the host. No-op when not running or already
+   * open. The generation bump retires the pending timer's callback.
+   */
+  kick(): void {
+    if (!this.running || this.streamOpen || this.reconnectTimer === undefined) return;
+    this.generation++;
+    clearTimeout(this.watchdog);
+    clearTimeout(this.debounce);
+    clearTimeout(this.reconnectTimer);
+    this.watchdog = undefined;
+    this.debounce = undefined;
+    this.reconnectTimer = undefined;
+    this.backoff = this.initialBackoffMs;
+    void this.connect();
+  }
+
   private async connect(): Promise<void> {
     if (!this.running) return;
     const gen = this.generation;
@@ -189,6 +211,9 @@ export class SseStream {
     clearTimeout(this.reconnectTimer);
     const delay = this.backoff;
     this.reconnectTimer = setTimeout(() => {
+      // Clear FIRST: a fired timer is no longer pending, so kick() stops
+      // treating a dead handle as a wait worth skipping.
+      this.reconnectTimer = undefined;
       if (!this.running || gen !== this.generation) return;
       this.backoff = Math.min(this.backoff * 2, this.maxBackoffMs);
       void this.connect();

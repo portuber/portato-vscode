@@ -261,8 +261,9 @@ async function readHead(
 /**
  * One-shot request. Resolves for ANY status; the caller maps >=400 to
  * errors. We send Connection: close, so the body simply ends at EOF
- * (dechunked first when the response is chunked); Content-Length is not
- * consulted.
+ * (dechunked first when the response is chunked); when Content-Length is
+ * present it is verified against the delivered bytes, so a body truncated
+ * by a clean early close rejects instead of resolving.
  */
 export async function rawRequest(
   socketPath: string,
@@ -300,12 +301,24 @@ export async function rawRequest(
           return;
         }
         try {
+          const chunked = head.headers["transfer-encoding"]?.includes("chunked");
+          const body = payload ?? Buffer.alloc(0);
+          if (!chunked) {
+            // A clean close does not certify a complete body: with
+            // Content-Length present, a short (or over-long) body is a
+            // corrupt exchange and must not resolve as success -- the
+            // client would parse truncated JSON as data or as "undefined".
+            const declared = Number(head.headers["content-length"]);
+            if (Number.isInteger(declared) && body.length !== declared) {
+              throw new Error(
+                `response body length ${body.length} does not match Content-Length ${declared} (${path})`,
+              );
+            }
+          }
           resolve({
             status: head.status,
             headers: head.headers,
-            body: head.headers["transfer-encoding"]?.includes("chunked")
-              ? dechunkBuffer(payload ?? Buffer.alloc(0))
-              : (payload ?? Buffer.alloc(0)),
+            body: chunked ? dechunkBuffer(body) : body,
           });
         } catch (e) {
           reject(e as Error);

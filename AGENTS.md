@@ -178,3 +178,19 @@ src/
 - No commits or pushes without explicit permission.
   (Task plans live in GitHub issues -- `~/.opencode/plan/` files are
   machine-local personal notes, never referenced from the repo.)
+
+## Bridge protocol
+
+- A second agent, "the bridge", arbitrates open decisions before
+  implementation and audits staged changes before a commit. It runs
+  headlessly through `/bridge consult <question>` and `/bridge audit`
+  (`.opencode/command/bridge.md`); consult verdicts are relayed to the owner
+  verbatim, never summarized.
+- The runner binary and the model are machine-local, never committed:
+  `.opencode/bridge.local` (gitignored; copy from
+  `.opencode/bridge.local.example`). Default: the Claude Code VS Code
+  extension binary with `claude-opus-5-5`.
+- Only an audit verdict (`VERDICT: approve`) authorizes the mechanical
+  `Bridge: <verdict>, tree <hash>` trailer on a commit; verdict files under
+  `.git/` are the reviewer's output and are never edited by hand. Never run
+  the bridge with broader permissions than the command file grants.

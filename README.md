@@ -7,8 +7,9 @@ daemon: manage SSH port-forwarding tunnels from the sidebar.
 
 The extension is only a client: the daemon, the config and all SSH logic
 live in the `portato` binary. It discovers a running daemon on its own
-(marker file or runtime socket), starts one if none is running, and then
-keeps the tree in sync over SSE.
+(marker file or runtime socket) and keeps the tree in sync over SSE; when
+no daemon is running, the view offers a Start button that launches one
+(it never spawns a daemon on its own).
 
 ## Features
 
@@ -54,16 +55,18 @@ convenience subset.
 
 | Setting | Default | Description |
 | --- | --- | --- |
-| `portato.binaryPath` | `portato` | Path to the `portato` binary used to start the daemon. Set it when VS Code cannot find `portato` on its PATH (common for GUI-launched VS Code on macOS). |
-| `portato.socketPath` | `portato` default discovery | Explicit daemon socket path. Overrides discovery; use it if your shell exports `PORTATO_SOCKET` that a GUI-launched VS Code cannot see, or to point at a non-default daemon. |
+| `portato.binaryPath` | `portato` | Path to the `portato` binary used to start the daemon. Set it when VS Code cannot find `portato` on its PATH (common for GUI-launched VS Code on macOS). Machine scope: set it in user settings, not per workspace. |
+| `portato.socketPath` | `portato` default discovery | Explicit daemon socket path. Overrides discovery; use it if your shell exports `PORTATO_SOCKET` that a GUI-launched VS Code cannot see, or to point at a non-default daemon. Machine scope: set it in user settings, not per workspace. |
 | `portato.groupByTag` | `false` | Group tunnels by their first tag in the tree. |
 
 ## Requirements
 
+- VS Code 1.90 or newer (the bundled extension host runs Node 20, matching
+  the extension's build target).
 - The [portato](https://github.com/portuber/portato) CLI installed and on
-  PATH (or pointed to by `portato.binaryPath`). The extension starts the
-  daemon itself when none is running; an externally started daemon is
-  picked up too.
+  PATH (or pointed to by `portato.binaryPath`). When no daemon is running,
+  start it from the Portato view; an externally started daemon is picked
+  up too.
 
 ## Platform support
 

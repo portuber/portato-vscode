@@ -9,7 +9,7 @@ import {
   tickPlan,
   type BufferItem,
 } from "./logDedup";
-import { BASE_POLL_MS, nextDelayMs, shouldPoll } from "./logsPoll";
+import { nextDelayMs, shouldPoll } from "./logsPoll";
 import type { LogEntry } from "./types";
 
 // Poll-driven logs viewer. The daemon's ring does not emit SSE events, so

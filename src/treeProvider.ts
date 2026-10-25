@@ -29,6 +29,26 @@ const STATE_ICONS: Record<TuberState, string> = {
 /** Recommended intra-tree mime type; the payload is { name: string }. */
 export const TUNNEL_DRAG_MIME = "application/vnd.code.tree.portatotunnels";
 
+/**
+ * Localized state label for the row description and tooltip. The RAW enum
+ * stays the contextValue (package.json when-clauses key on it); only what
+ * the user reads is translated. Literals inside t(...) per the l10n rules.
+ */
+function stateLabel(state: TuberState, t: typeof vscode.l10n.t): string {
+  switch (state) {
+    case "off":
+      return t("off");
+    case "connecting":
+      return t("connecting");
+    case "connected":
+      return t("connected");
+    case "reconnecting":
+      return t("reconnecting");
+    case "error":
+      return t("error");
+  }
+}
+
 /** Zero time (RFC3339) means "never connected" per the daemon contract. */
 function connectedAtLabel(iso: string): string {
   if (iso.startsWith("0001-01-01")) return vscode.l10n.t("never");
@@ -281,7 +301,8 @@ export class TuberItem extends vscode.TreeItem {
     const t = vscode.l10n.t;
     const item = new TuberItem(s, s.name, tag);
     const state = s.state;
-    item.description = `${endpoint(s)} -- ${state}${s.error ? t(" (see tooltip)") : ""}`;
+    const label = stateLabel(state, t);
+    item.description = `${endpoint(s)} -- ${label}${s.error ? t(" (see tooltip)") : ""}`;
     item.iconPath = new vscode.ThemeIcon(STATE_ICONS[state]);
     // A tuber blocked on a prompt gets its own contextValue so package.json
     // can offer portato.answerPrompt; other menu when-clauses (!= off) keep
@@ -303,7 +324,7 @@ export class TuberItem extends vscode.TreeItem {
       t("Name: {0}", s.name),
       t("Type: {0}", s.type),
       t("Endpoint: {0}", endpoint(s)),
-      t("State: {0}", state),
+      t("State: {0}", label),
       t("Connected at: {0}", connectedAtLabel(s.connected_at)),
     ];
     if (s.tags?.length) lines.push(t("Tags: {0}", s.tags.join(", ")));

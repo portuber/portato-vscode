@@ -68,6 +68,7 @@ class PortatoController implements vscode.Disposable {
   constructor() {
     this.coordinator = new PromptCoordinator({
       submit: (name, kind, value) => this.submitPrompt(name, kind, value),
+      refetch: (name) => this.refetchStatus(name),
     });
     this.forms = new TuberFormController({
       getClient: () => this.client,
@@ -147,6 +148,13 @@ class PortatoController implements vscode.Disposable {
     if (!quiet) this.updateStatusBar("connecting");
     try {
       const client = await this.makeClient();
+      // dispose() ran while discovery/healthz was in flight: its teardown
+      // already released everything. The late client must not be adopted
+      // (nobody would destroy it again) and nothing may start.
+      if (this.disposed) {
+        client.destroy();
+        return;
+      }
       // A live stream on a DIFFERENT socket (socketPath setting changed,
       // reconnect landed elsewhere) must move: sse.start() alone is a no-op
       // while running. stop() fires onStreamChange(false), which disposes the
@@ -165,8 +173,16 @@ class PortatoController implements vscode.Disposable {
         this.schedulePoll();
         return;
       }
+      if (this.disposed) return;
       if (moveStream) this.sse.stop();
       this.sse.start();
+      // start() is a no-op while the stream sits in its reconnect backoff
+      // (up to 30 s after the daemon died); the healthz above proves the
+      // daemon is back, so kick the remaining wait and connect now. kick()
+      // is itself a no-op unless a reconnect timer is pending -- so the
+      // fresh-activation path (start() already connecting) stays at one
+      // open, no duplicate discovery/adoption.
+      this.sse.kick();
       this.logs.start();
     } catch (e) {
       if (httpStatusOf(e) === 401) {
@@ -295,11 +311,18 @@ class PortatoController implements vscode.Disposable {
    * schedule a pointless poll. Daemon loss itself is detected by the
    * SSE reconnect path (openStream -> showDaemonGone), not by one bad GET.
    */
+  private refreshSeq = 0;
+
   private async refreshTubers(): Promise<boolean> {
     const client = this.client;
     if (!client) return false;
+    const seq = ++this.refreshSeq;
     try {
       const statuses = await client.tubers();
+      // Concurrent refreshes (SSE signal + user action) interleave: an
+      // OLDER fetch resolving last must not regress the tree to stale
+      // statuses. Only the newest refresh sequence applies its payload.
+      if (client !== this.client || seq !== this.refreshSeq) return true;
       this.authEpisode.recordSuccess();
       this.lastStatuses = statuses;
       this.tree.setStatuses(statuses);
@@ -314,6 +337,23 @@ class PortatoController implements vscode.Disposable {
         this.maybeShowAuthMismatch();
       }
       return client !== this.client;
+    }
+  }
+
+  /**
+   * Fresh single-tuber status for the host-key accept re-check
+   * (prompts.ts -> hostKeyVerify): fetched, never read from lastStatuses,
+   * because the modal may have outlived several status updates.
+   */
+  private async refetchStatus(name: string): Promise<TuberStatus | undefined> {
+    const client = this.client;
+    if (!client) return undefined;
+    try {
+      // Deliberately not applied to the tree: the submit flow's own
+      // refreshTubers follows immediately and owns the rendering.
+      return (await client.tubers()).find((s) => s.name === name);
+    } catch {
+      return undefined; // unreachable daemon = nothing verifiable = abort
     }
   }
 
@@ -472,6 +512,7 @@ class PortatoController implements vscode.Disposable {
         await client.config(),
         this.lastStatuses,
         homedir(),
+        vscode.l10n.t,
       );
       if (candidates.length === 0) {
         void vscode.window.showErrorMessage(
@@ -544,6 +585,7 @@ class PortatoController implements vscode.Disposable {
         await client.config(),
         this.lastStatuses,
         homedir(),
+        vscode.l10n.t,
       );
       if (candidates.length === 0) {
         void vscode.window.showErrorMessage(

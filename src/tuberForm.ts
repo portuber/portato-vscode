@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { randomBytes } from "node:crypto";
 import type { DaemonClient } from "./daemonClient";
+import { planFormError } from "./errors";
 import type { ConfigTuber } from "./types";
 import {
   buildTuberBody,
@@ -131,6 +132,16 @@ export interface TuberFormDeps {
 
 type RawTuber = Record<string, unknown>;
 
+/**
+ * Whether the raw tuber carries a set SOCKS5 password. The key is absent
+ * when no password is configured; reading `raw.socks5_password !== ""`
+ * alone treats `undefined` as "set" and shows the replace/clear UI for a
+ * tuber that has none.
+ */
+function socksPasswordSet(raw: RawTuber): boolean {
+  return typeof raw.socks5_password === "string" && raw.socks5_password !== "";
+}
+
 interface FormState {
   mode: "add" | "edit";
   /** Path segment for PUT; set in edit mode only. */
@@ -180,7 +191,7 @@ export class TuberFormController {
       { mode: "edit", originalName: name, snapshot: { ...raw }, busy: false },
       S.editTitle(name),
       prefillFrom(raw),
-      raw.socks5_password !== "",
+      socksPasswordSet(raw),
     );
   }
 
@@ -276,7 +287,7 @@ export class TuberFormController {
             this.postTo(panel, {
               type: "reload",
               fields: prefillFrom(fresh),
-              socksSet: fresh.socks5_password !== "",
+              socksSet: socksPasswordSet(fresh),
             });
             return;
           }
@@ -296,8 +307,11 @@ export class TuberFormController {
       panel.dispose();
       if (toast !== undefined) void vscode.window.showInformationMessage(toast);
     } catch (e) {
-      // Keep the form open so the user can fix the input and retry.
-      this.postTo(panel, { type: "error", message: errText(e) });
+      // Keep the form open so the user can fix the input and retry. 409
+      // (duplicate name on add -- a rename collision is a 400 from config
+      // validation) gets a localized message instead of the daemon's raw
+      // English.
+      this.postTo(panel, { type: "error", message: planFormError(e, vscode.l10n.t) });
     } finally {
       state.busy = false;
     }

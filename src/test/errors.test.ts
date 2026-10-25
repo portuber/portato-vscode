@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { AuthEpisode, planPromptError, planTunnelError } from "../errors";
+import { AuthEpisode, planFormError, planPromptError, planTunnelError } from "../errors";
 import { HttpError } from "../daemonClient";
 
 // Error-plan mapping: 404 = stale tree item (heals with a refresh),
@@ -62,6 +62,22 @@ describe("planPromptError", () => {
     const plan = planPromptError(new Error("socket hang up"), "web");
     assert.equal(plan.staleItem, false);
     assert.equal(plan.message, "portato: web: socket hang up");
+  });
+});
+
+describe("planFormError", () => {
+  it("409 maps to the duplicate-name message", () => {
+    const msg = planFormError(new HttpError(409, "tuber \"web\" already exists"));
+    assert.equal(msg, "portato: a tunnel with this name already exists");
+  });
+
+  it("other errors keep their message", () => {
+    assert.equal(planFormError(new Error("socket hang up")), "socket hang up");
+  });
+
+  it("passes the injected translator through", () => {
+    const t = (m: string): string => `[fr] ${m}`;
+    assert.match(planFormError(new HttpError(409, "dup"), t), /^\[fr\] portato:/);
   });
 });
 

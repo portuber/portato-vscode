@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { planPromptError } from "./errors";
+import { acceptStillPending } from "./hostKeyVerify";
 import { AskedPrompts, promptKey } from "./promptKeys";
 import { promptForPlan } from "./promptForPlan";
 import type { PromptKind, TuberStatus } from "./types";
@@ -24,6 +25,12 @@ import type { PromptKind, TuberStatus } from "./types";
 export interface PromptCoordinatorDeps {
   /** Send the answer to the daemon; reject propagates to the user. */
   submit(name: string, kind: PromptKind, value: string | undefined): Promise<void>;
+  /**
+   * Fresh status for one tuber, straight from GET /tubers -- NOT a cached
+   * list: the host-key accept compares the pair shown in the modal with
+   * what is pending right now (hostKeyVerify). Undefined = no such tuber.
+   */
+  refetch(name: string): Promise<TuberStatus | undefined>;
 }
 
 export class PromptCoordinator {
@@ -117,7 +124,28 @@ export class PromptCoordinator {
         );
         if (action !== review) return;
         const ok = await confirmHostKey(p.detail, p.fingerprint);
-        if (ok) await this.deps.submit(s.name, p.kind, undefined);
+        if (!ok) return;
+        // The modal may have been open for a long time; the pending key can
+        // have changed under it (re-dial, config edit). Re-check the shown
+        // (host, fingerprint) pair against a FRESH status before the empty
+        // POST -- accept-host binds to whatever is pending at the daemon,
+        // not to what this modal displayed. On a mismatch: send nothing and
+        // end silently; the (tuber, fingerprint) dedupe key makes the new
+        // key raise its own notification through the normal offer path.
+        // (A small race window remains between this re-fetch and the POST;
+        // closing it needs a daemon API that takes the expected
+        // fingerprint -- a portato follow-up.)
+        const fresh = await this.deps.refetch(s.name);
+        if (!acceptStillPending({ host: p.detail, fingerprint: p.fingerprint }, fresh)) {
+          // Drop the dedupe entry on the way out. When the mismatch is a
+          // transient refetch failure (not a genuinely changed key), the
+          // next status refresh re-offers this still-pending key instead
+          // of swallowing the user's Accept forever; a genuinely changed
+          // key has its own dedupe key and raises its own toast anyway.
+          this.asked.delete(key);
+          return;
+        }
+        await this.deps.submit(s.name, p.kind, undefined);
         return;
       }
       const label =

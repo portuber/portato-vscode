@@ -169,6 +169,47 @@ describe("SseStream", () => {
     h.stream.stop();
   });
 
+  it("kick() during the reconnect backoff connects immediately", async () => {
+    // E4 regression: Start Daemon / Refresh proves the daemon is back, but
+    // the stream still waits out its backoff (here 10 s) -- kick() must
+    // skip the wait and reconnect now.
+    const h = harness({ initialBackoffMs: 10_000, maxBackoffMs: 10_000, watchdogMs: 10_000 });
+    h.failNextOpen(1); // open #1 fails -> reconnect scheduled at +10 s
+    h.stream.start();
+    await sleep(30); // let the failure land
+    assert.equal(h.openCalls, 1);
+    h.stream.kick();
+    await sleep(80); // far below the 10 s backoff
+    assert.ok(h.openCalls >= 2, `opens=${h.openCalls} -- kick did not connect`);
+    h.stream.stop();
+  });
+
+  it("kick() on a live stream is a no-op (no extra open)", async () => {
+    const h = harness({});
+    h.stream.start();
+    await sleep(30);
+    assert.deepEqual(h.transitions, [true]);
+    h.stream.kick();
+    await sleep(80);
+    assert.equal(h.openCalls, 1);
+    assert.deepEqual(h.transitions, [true]);
+    h.stream.stop();
+  });
+
+  it("kick() while a connect is already in flight is a no-op (one open)", async () => {
+    // start() has called open() but the connect continuation has not run
+    // yet -- kick() must not stack a SECOND open() on top of it: the
+    // duplicate would double-run discovery/adoption in the host and pit
+    // the two generations' clients against each other.
+    const h = harness({});
+    h.stream.start();
+    h.stream.kick(); // back-to-back, before the first open settles
+    await sleep(80);
+    assert.equal(h.openCalls, 1);
+    assert.deepEqual(h.transitions, [true]);
+    h.stream.stop();
+  });
+
   it("backoff resets after a successful reconnect", async () => {
     const h = harness({ initialBackoffMs: 50, maxBackoffMs: 200, watchdogMs: 10_000 });
     h.stream.start(); // open #1

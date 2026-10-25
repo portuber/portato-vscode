@@ -5,3 +5,6 @@ out/
 
 # opencode local config (see .opencode/opencode.jsonc.example)
 .opencode/opencode.json
+# bridge agent settings - machine-local, never committed
+# (see .opencode/bridge.local.example)
+.opencode/bridge.local

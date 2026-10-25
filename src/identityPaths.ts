@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { identityT, type Translate } from "./i18n";
 import type { PortatoConfig, TuberStatus } from "./types";
 
 // Identity-passphrase candidate paths for a tuber. The daemon keys its
@@ -54,6 +55,7 @@ export function identityCandidates(
   cfg: PortatoConfig,
   statuses: readonly TuberStatus[],
   home: string,
+  t: Translate = identityT,
 ): IdentityCandidate[] {
   const out: IdentityCandidate[] = [];
   const push = (c: IdentityCandidate): void => {
@@ -69,7 +71,9 @@ export function identityCandidates(
     if (defaultIdentity && defaultIdentity.trim() !== "") {
       push({
         path: expandTilde(defaultIdentity, home),
-        note: "default identity -- a per-host IdentityFile in ~/.ssh/config takes precedence",
+        note: t(
+          "default identity -- a per-host IdentityFile in ~/.ssh/config takes precedence",
+        ),
       });
     }
   }

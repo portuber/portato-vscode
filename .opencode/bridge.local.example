@@ -1,0 +1,40 @@
+# Copy to .opencode/bridge.local (gitignored) and adjust for this machine.
+# Every value is optional; the command file carries the same defaults.
+
+# Runner: claude-ext | claude-cli | antigravity | custom
+#   antigravity   the Antigravity CLI `agy` (PATH or ~/.local/bin/agy;
+#                 verified working for consult) - the showcased setup below
+#   claude-ext    claude from PATH, falling back to the VS Code extension
+#                 binary (verified working; the production setup on the
+#                 primary machine - commented block below)
+#   claude-cli    claude from PATH only
+#   custom        requires bridge_invoke() below
+BRIDGE_RUNNER=antigravity
+
+# Model id exactly as the runner CLI accepts it - ids are RUNNER-SPECIFIC:
+#   antigravity:    claude-sonnet-4-6, claude-opus-4-6-thinking,
+#                   gemini-3.8-flash-low|medium|high, gpt-oss-120b-medium
+#   claude runners: claude-opus-5-5, claude-sonnet-5-5, claude-haiku-5-5
+BRIDGE_MODEL=claude-sonnet-4-6
+
+# Optional effort value (empty = the CLI default).
+# antigravity: low|medium|high|xhigh|max; claude runners: high etc.
+BRIDGE_EFFORT=
+
+# Audit retry pauses in seconds (empty = 120 / 600).
+BRIDGE_PAUSE1=
+BRIDGE_PAUSE2=
+
+# --- Alternative: Claude Code VS Code extension (production here) ---------
+# BRIDGE_RUNNER=claude-ext
+# BRIDGE_MODEL=claude-opus-5-5
+
+# Headless agy notes (verified): --print-timeout takes a unit - the command
+# file passes 600s, keep it that way. File reads need no grants, so consult
+# works as-is; shell commands (audit: npm test etc.) are auto-denied unless
+# agy's own settings.json carries permissions.allow rules, e.g.
+#   permissions.allow: ["command(npm*)", "command(git status*)"]
+
+# Full override for any other agent binary - wins over everything above.
+# Receives the prompt as $1; print the answer to stdout.
+# bridge_invoke() { /path/to/agent --headless --model "$BRIDGE_MODEL" "$1"; }
