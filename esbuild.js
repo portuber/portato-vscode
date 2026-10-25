@@ -18,8 +18,10 @@ const extensionConfig = {
 
 // Tests run under plain `node --test` (no VS Code): bundled from
 // src/test/*.test.ts (unit) and src/test/*.itest.ts (integration against a
-// real daemon). vscode stays external so importing it fails loudly if a test
-// accidentally pulls UI code.
+// real daemon). `vscode` is aliased to src/test/vscodeStub.ts so the
+// controller glue test can drive the real wiring headlessly; pure module
+// tests never import vscode at all. tsc still checks @types/vscode because
+// the alias lives only here.
 async function testConfig() {
   let entries = [];
   try {
@@ -33,7 +35,7 @@ async function testConfig() {
     entryPoints: entries,
     bundle: true,
     outdir: "out/test",
-    external: ["vscode"],
+    alias: { vscode: path.resolve("src/test/vscodeStub.ts") },
     platform: "node",
     target: "node20",
     format: "cjs",

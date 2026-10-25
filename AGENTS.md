@@ -67,7 +67,9 @@ Containers the extension must run on the client machine.
 
 Part 1 adds tests run by plain `node --test` over esbuild bundles (no VS
 Code): `npm test` -- unit tests of the client against a fake HTTP server on a
-temporary unix socket in Node (no real daemon, hermetic for CI);
+temporary unix socket in Node (no real daemon, hermetic for CI), plus a
+controller glue suite driving the real wiring through a vscode stub
+(`src/test/vscodeStub.ts`, aliased in esbuild's test config);
 `npm run test:integration` -- suite against a real `portato daemon` under
 temporary `--socket` + `XDG_CONFIG_HOME`/`XDG_STATE_HOME` (binary from
 `$PORTATO_BINARY` or `/opt/homebrew/bin/portato`; skips when absent); CI

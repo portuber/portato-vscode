@@ -38,7 +38,9 @@ import {
 
 const DISCONNECTED_POLL_MS = 10_000;
 
-class PortatoController implements vscode.Disposable {
+// Exported for the controller glue test (src/test/controllerGlue.test.ts,
+// which runs against the vscode stub); activate() remains the prod entry.
+export class PortatoController implements vscode.Disposable {
   /**
    * Host keys seen pending, by tuber. Shared with the tree (which applies
    * the mutation rules in updatePendingHosts) and with answerPrompt, so
