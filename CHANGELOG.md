@@ -193,8 +193,27 @@ context actions, new settings, and mitigations for known daemon bugs.
   honestly synchronous, and a targeted `prefer-const` exception remains
   on `connect()`'s self-referencing promise (documented in place).
 
+## [0.3.1] - 2026-10-25
+
+### Changed
+
+- Development and CI tooling refresh, no runtime changes: esbuild 0.28,
+  eslint 10 (with `@eslint/js` 10), `@vscode/vsce` 4, and the SHA-pinned
+  GitHub Actions moved to checkout v7, setup-node v7, upload-artifact
+  v7 and action-gh-release v3. Dependabot now ignores `@types/node`
+  majors (they must track the extension host's Node) and `typescript`
+  `>=6.1.0` (outside typescript-eslint's peer range).
+
+### Fixed
+
+- CI: the integration suite no longer flakes on keyring-less Linux
+  hosts (newer `ubuntu-latest` images ship without `dbus-launch`); the
+  forget-identity call is now tolerated like store when the daemon
+  reports a missing keyring backend.
+
 [0.1.0]: https://github.com/portuber/portato-vscode/releases/tag/v0.1.0
 [0.1.1]: https://github.com/portuber/portato-vscode/releases/tag/v0.1.1
 [0.1.2]: https://github.com/portuber/portato-vscode/releases/tag/v0.1.2
 [0.2.0]: https://github.com/portuber/portato-vscode/releases/tag/v0.2.0
 [0.3.0]: https://github.com/portuber/portato-vscode/releases/tag/v0.3.0
+[0.3.1]: https://github.com/portuber/portato-vscode/releases/tag/v0.3.1
