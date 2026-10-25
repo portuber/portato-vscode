@@ -4,7 +4,7 @@ import * as fsp from "node:fs/promises";
 import type * as http from "node:http";
 import { DaemonClient, probeSocket } from "../daemonClient";
 import type { TuberStatus } from "../types";
-import { makeTempDir, sleep, startFakeDaemon, type FakeDaemon } from "./fakeDaemon";
+import { makeTempDir, sleep, startFakeDaemon } from "./fakeDaemon";
 
 const TOKEN = "test-token-abc";
 
@@ -69,8 +69,7 @@ describe("DaemonClient", () => {
   });
 
   it("401 rotates the token: re-read once, retry once, then succeed", async (t) => {
-    let daemon: FakeDaemon;
-    daemon = await startFakeDaemon({
+    const daemon = await startFakeDaemon({
       dir,
       token: "old-token",
       handler: async (req, res) => {
@@ -278,8 +277,7 @@ describe("DaemonClient", () => {
   });
 
   it("eventsStream: 401 rotates the token and retries once, like request()", async (t) => {
-    let daemon: FakeDaemon;
-    daemon = await startFakeDaemon({
+    const daemon = await startFakeDaemon({
       dir,
       token: "old-token",
       handler: async (req, res) => {

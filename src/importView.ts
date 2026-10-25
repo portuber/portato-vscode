@@ -107,3 +107,12 @@ export function countImported(out: string): number {
   }
   return n;
 }
+
+/**
+ * Argv for the real `portato import` run. The `--` separator ends flag
+ * parsing, so an ssh Host pattern that starts with "-" (e.g. "-dash")
+ * stays a positional argument instead of being read as a cobra flag.
+ */
+export function importArgv(hosts: string[]): string[] {
+  return ["import", "--yes", "--", ...hosts];
+}

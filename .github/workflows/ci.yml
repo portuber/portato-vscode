@@ -1,7 +1,7 @@
-# CI: typecheck, bundle, hermetic unit tests, and a packaged .vsix on every
-# push and pull request. Integration tests (npm run test:integration) are
-# deliberately NOT run here: they need a real `portato` daemon binary, which
-# lives in the separate portato Go repo; they run on dev machines with
+# CI: lint, typecheck, bundle, hermetic unit tests, and a packaged .vsix on
+# every push and pull request. Integration tests (npm run test:integration)
+# are deliberately NOT run here: they need a real `portato` daemon binary,
+# which lives in the separate portato Go repo; they run on dev machines with
 # $PORTATO_BINARY or /opt/homebrew/bin/portato present.
 name: CI
 
@@ -24,6 +24,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - run: npm run lint
       - run: npm run typecheck
       - run: npm run compile
       - run: npm test

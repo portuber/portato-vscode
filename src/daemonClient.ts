@@ -1,5 +1,4 @@
 import * as fsp from "node:fs/promises";
-import * as net from "node:net";
 import type { Readable } from "node:stream";
 import { tokenPath } from "./discovery";
 import { rawRequest, rawStream, type SocketTracker } from "./rawHttp";

@@ -5,6 +5,7 @@ import {
   groupImportBlocks,
   hostsForSelection,
   countImported,
+  importArgv,
 } from "../importView.js";
 
 // Mirrors internal/cmd/import.go printImportPreview: columns padded with
@@ -99,4 +100,18 @@ test("countImported counts the per-tuber confirmation lines", () => {
     2,
   );
   assert.equal(countImported("nothing here"), 0);
+});
+
+test("importArgv places `--` before the hosts", () => {
+  assert.deepEqual(importArgv(["web", "dbprod"]), ["import", "--yes", "--", "web", "dbprod"]);
+});
+
+test("importArgv keeps a dash-leading ssh pattern positional", () => {
+  const argv = importArgv(["-dash", "web"]);
+  const sep = argv.indexOf("--");
+  assert.ok(sep > 0);
+  // Every host, including the dash-leading one, stays after the separator.
+  for (const host of ["-dash", "web"]) {
+    assert.ok(argv.indexOf(host) > sep);
+  }
 });

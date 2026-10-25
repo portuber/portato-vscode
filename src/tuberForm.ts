@@ -158,7 +158,7 @@ export class TuberFormController {
 
   constructor(private readonly deps: TuberFormDeps) {}
 
-  async openAdd(tag?: string): Promise<void> {
+  openAdd(tag?: string): void {
     if (!this.deps.getClient()) {
       void vscode.window.showErrorMessage(S.errNoClient);
       return;

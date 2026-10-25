@@ -61,6 +61,8 @@ Containers the extension must run on the client machine.
 - `npm run compile` -- esbuild bundle -> `out/extension.js`
 - `npm run watch` -- watch mode for the Extension Development Host (F5)
 - `npm run typecheck` -- `tsc --noEmit`
+- `npm run lint` -- ESLint (flat config, type-checked rules over src/; the
+  test suites relax `no-floating-promises`/`require-await` on purpose)
 - `npm run package` -- `vsce package` (`.vsix`)
 
 Part 1 adds tests run by plain `node --test` over esbuild bundles (no VS

@@ -3,7 +3,7 @@ import type { Readable } from "node:stream";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { DaemonClient, probeSocket, httpStatusOf } from "./daemonClient";
-import { planTunnelError, planPromptError, AuthEpisode } from "./errors";
+import { planTunnelError, AuthEpisode } from "./errors";
 import { resolveSocketPath, configHome } from "./discovery";
 import { settingOverride, startDaemon, stopDaemon, binaryPath, socketOverrideArgs } from "./daemonLifecycle";
 import { askLogLevel, LogsView, type LogLevel } from "./logsView";
@@ -27,6 +27,7 @@ import {
   groupImportBlocks,
   hostsForSelection,
   countImported,
+  importArgv,
   type ImportRow,
 } from "./importView";
 
@@ -222,7 +223,13 @@ class PortatoController implements vscode.Disposable {
       return this.connectPromise;
     }
     let quiet = opts.quiet ?? false;
+    // The definite-assignment split is a TypeScript requirement, not a
+    // runtime one: the async body reads `run` in its finally, and tsc's
+    // analysis rejects a self-referencing const initializer with TS2454
+    // (a closure may run before the initializer completes). At runtime the
+    // read only happens after the first await has yielded.
     let run!: Promise<void>;
+    // eslint-disable-next-line prefer-const -- see above
     run = (async () => {
       try {
         do {
@@ -613,8 +620,11 @@ class PortatoController implements vscode.Disposable {
     ].sort();
     const byName = t("Filter by name...");
     const clear = t("Clear filter");
-    const picks: (vscode.QuickPickItem & { filter?: TunnelFilter })[] = [
-      ...tags.map((t) => ({ label: t, filter: { kind: "tag", value: t } as TunnelFilter })),
+    type FilterPick = vscode.QuickPickItem & { filter?: TunnelFilter };
+    const picks: FilterPick[] = [
+      ...tags.map(
+        (tag): FilterPick => ({ label: tag, filter: { kind: "tag", value: tag } }),
+      ),
       { label: byName, description: t("substring on name or tag") },
       { label: clear },
     ];
@@ -937,7 +947,7 @@ class PortatoController implements vscode.Disposable {
 
   /** View title: add a tunnel through the webview form. */
   addTunnelCommand(): void {
-    void this.forms.openAdd();
+    this.forms.openAdd();
   }
 
   /** Tree context: edit a tunnel through the webview form. */
@@ -999,7 +1009,7 @@ class PortatoController implements vscode.Disposable {
 
   /** Tag-group context: add a tunnel preseeded with this tag. */
   addTunnelWithTagCommand(item?: TagGroupItem): void {
-    void this.forms.openAdd(item?.tag);
+    this.forms.openAdd(item?.tag);
   }
 
   /**
@@ -1009,9 +1019,10 @@ class PortatoController implements vscode.Disposable {
    * `portato import` matches host patterns, so picking any forward of a
    * block imports the whole block (the pick says so). The real run passes
    * the deduplicated hosts as argv through execFile (no shell) with --yes;
-   * it writes config.yaml directly, and the daemon's own config watcher +
-   * the SSE refresh surface the new tunnels without any extension-side
-   * filewatcher.
+   * importArgv puts them after `--` so a pattern that starts with "-" is
+   * never read as a flag. It writes config.yaml directly, and the daemon's
+   * own config watcher + the SSE refresh surface the new tunnels without
+   * any extension-side filewatcher.
    */
   async importSshCommand(): Promise<void> {
     const dry = await runCliCapture(binaryPath(), ["import", "--all", "--dry-run"]);
@@ -1063,7 +1074,7 @@ class PortatoController implements vscode.Disposable {
       new Set(chosen.flatMap((c) => (c.row ? [c.row.name] : []))),
     );
     if (hosts.length === 0) return;
-    const res = await runCliCapture(binaryPath(), ["import", ...hosts, "--yes"]);
+    const res = await runCliCapture(binaryPath(), importArgv(hosts));
     if (res.code !== 0) {
       void vscode.window.showErrorMessage(
         vscode.l10n.t("portato: import failed: {0}", res.stderr.trim() || res.stdout.trim()),

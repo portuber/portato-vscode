@@ -487,16 +487,20 @@
     "compile": "node esbuild.js",
     "watch": "node esbuild.js --watch",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
     "test": "npm run compile && node --test out/test/*.test.js",
     "test:integration": "npm run compile && node --test out/test/*.itest.js",
     "test:all": "npm run compile && node --test out/test/*.test.js out/test/*.itest.js",
     "package": "vsce package"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@types/node": "^20.17.0",
     "@types/vscode": "^1.90.0",
     "@vscode/vsce": "^3.0.0",
     "esbuild": "^0.25.0",
-    "typescript": "^5.4.0"
+    "eslint": "^9.39.5",
+    "typescript": "^5.4.0",
+    "typescript-eslint": "^8.72.0"
   }
 }

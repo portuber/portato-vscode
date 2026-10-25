@@ -105,7 +105,7 @@ describe("integration: real daemon (disposable)", { skip: !PORTATO }, () => {
   after(async () => {
     try {
       await new Promise<void>((resolve, reject) => {
-        execFile(PORTATO as string, ["stop"], { env, timeout: 10_000 }, (err) =>
+        execFile(PORTATO as string, ["stop"], { env, timeout: 10_000 }, (err: Error | null) =>
           err ? reject(err) : resolve(),
         );
       });

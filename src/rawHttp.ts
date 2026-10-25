@@ -243,7 +243,7 @@ async function readHead(
         resolve(head);
       } catch (e) {
         sock.destroy();
-        reject(e as Error);
+        reject(e instanceof Error ? e : new Error(String(e)));
       }
     };
     sock.on("data", onData);
@@ -321,7 +321,7 @@ export async function rawRequest(
             body: chunked ? dechunkBuffer(body) : body,
           });
         } catch (e) {
-          reject(e as Error);
+          reject(e instanceof Error ? e : new Error(String(e)));
         }
       }),
     );

@@ -9,9 +9,9 @@ import assert from "node:assert/strict";
 // the repo root (the script globs out/test), so cwd locates both files.
 
 const pkg: unknown = JSON.parse(readFileSync(resolve(process.cwd(), "package.json"), "utf8"));
-const nls: Record<string, string> = JSON.parse(
+const nls = JSON.parse(
   readFileSync(resolve(process.cwd(), "package.nls.json"), "utf8"),
-);
+) as Record<string, string>;
 
 /** Collect %key% tokens from every string reachable in a JSON value. */
 function referenced(value: unknown, out: string[] = []): string[] {

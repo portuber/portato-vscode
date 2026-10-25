@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { TuberStatus, TuberState } from "../types";
+import type { TuberStatus } from "../types";
 import { groupsOf, matchesFilter, moveSteps } from "../treeGroups";
 
 function status(name: string, tags?: string[]): TuberStatus {
@@ -9,7 +9,7 @@ function status(name: string, tags?: string[]): TuberStatus {
     type: "local",
     local: "127.0.0.1:1",
     remote: "127.0.0.1:2",
-    state: "off" as TuberState,
+    state: "off",
     connected_at: "0001-01-01T00:00:00Z",
     tags,
   };

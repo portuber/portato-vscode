@@ -70,7 +70,7 @@ export function tagsToText(tags: unknown): string {
 /** Fill the form from a raw config tuber (undefined = Add). */
 export function prefillFrom(raw: Record<string, unknown> | undefined): TuberFormFields {
   if (!raw) return emptyForm();
-  const str = (k: string): string => (typeof raw[k] === "string" ? (raw[k] as string) : "");
+  const str = (k: string): string => (typeof raw[k] === "string" ? raw[k] : "");
   const type = raw.type;
   const pa = raw.password_auth;
   return {

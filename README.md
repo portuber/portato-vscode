@@ -86,6 +86,7 @@ npm install
 npm run compile          # esbuild -> out/extension.js
 npm run watch            # + F5 (Run Extension) in VS Code
 npm run typecheck
+npm run lint             # ESLint (type-checked rules)
 npm test                 # unit tests (no VS Code, no daemon needed)
 npm run test:integration # against a disposable real daemon (needs portato)
 npm run package          # vsce package -> .vsix
