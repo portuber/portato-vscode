@@ -101,6 +101,8 @@ src/
   logsPoll.ts         poll gating + adaptive backoff delays (pure)
   logsView.ts         "Portato Logs" output channel: poll /logs, filter, min level
   identityPaths.ts    identity-passphrase candidate paths for a tunnel (pure)
+  cliRun.ts           one-shot portato CLI invocations: async execFile, no shell
+  importView.ts       pure parsing of `portato import --dry-run` + block selection math
   treeProvider.ts     TreeDataProvider: five states, tag grouping, filter, DnD reorder
   treeGroups.ts       pure grouping/filter visibility/move-delta math
   tuberFormFields.ts  pure add/edit form: prefill, tag parsing, body merge, deep-compare
@@ -166,6 +168,14 @@ src/
 - Never log tokens, passphrases, passwords, or `GET /config` bodies (the
   config carries `socks5_password` in plain text). Never pass secrets through
   argv.
+- The ssh-config importer and the doctor are CLI features and are never
+  reimplemented extension-side. `portato import` runs through
+  `src/cliRun.ts` (async execFile, argv only, no shell) and writes
+  config.yaml directly; the daemon's own watcher reloads it and the SSE
+  refresh picks the tunnels up -- no extension-side filewatcher.
+  `portato doctor` runs in a transient VS Code terminal (argv-only launch
+  through a tiny sh wrapper that parks the exit code) so its report stays
+  readable after the run.
 - All I/O is async; no `*Sync` fs/child_process calls; lazy activation.
 - `portato daemon` is a foreground process: spawn
   `{ detached: true, stdio: ["ignore","ignore",<log fd>] }` + `unref()`.

@@ -33,7 +33,7 @@ export function settingOverride(): string | undefined {
   );
 }
 
-function socketOverrideArgs(): string[] {
+export function socketOverrideArgs(): string[] {
   // When an override is active the spawned daemon must bind the same path
   // the client will dial -- pass --socket explicitly (env alone would also
   // propagate, but being explicit survives shells that scrub env).

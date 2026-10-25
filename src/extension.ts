@@ -1,10 +1,11 @@
 import * as vscode from "vscode";
 import type { Readable } from "node:stream";
 import { homedir } from "node:os";
+import { join } from "node:path";
 import { DaemonClient, probeSocket, httpStatusOf } from "./daemonClient";
 import { planTunnelError, planPromptError, AuthEpisode } from "./errors";
-import { resolveSocketPath } from "./discovery";
-import { settingOverride, startDaemon, stopDaemon, binaryPath } from "./daemonLifecycle";
+import { resolveSocketPath, configHome } from "./discovery";
+import { settingOverride, startDaemon, stopDaemon, binaryPath, socketOverrideArgs } from "./daemonLifecycle";
 import { askLogLevel, LogsView, type LogLevel } from "./logsView";
 import { PromptCoordinator } from "./prompts";
 import { identityCandidates, type IdentityCandidate } from "./identityPaths";
@@ -20,6 +21,14 @@ import { classifyVersion, MIN_DAEMON_VERSION } from "./daemonVersion";
 import { isBinaryAvailable } from "./binaryCheck";
 import { diagWarn, diagInfo, disposeDiagnostics } from "./diagnostics";
 import { browserUrl, localAddress, socksUrl, resolvedSocks5User } from "./addrUrl";
+import { runCliCapture } from "./cliRun";
+import {
+  parseImportPreview,
+  groupImportBlocks,
+  hostsForSelection,
+  countImported,
+  type ImportRow,
+} from "./importView";
 
 // Controller wiring: discovery -> client -> SSE -> tree/statusbar, plus the
 // daemon lifecycle commands and the prompt coordinator. All re-discovery and
@@ -993,6 +1002,135 @@ class PortatoController implements vscode.Disposable {
     void this.forms.openAdd(item?.tag);
   }
 
+  /**
+   * Palette: import forwards from ~/.ssh/config through the CLI -- the
+   * importer itself is the CLI's, never reimplemented here. The dry-run
+   * preview feeds a quick pick whose unit of selection is the ssh BLOCK:
+   * `portato import` matches host patterns, so picking any forward of a
+   * block imports the whole block (the pick says so). The real run passes
+   * the deduplicated hosts as argv through execFile (no shell) with --yes;
+   * it writes config.yaml directly, and the daemon's own config watcher +
+   * the SSE refresh surface the new tunnels without any extension-side
+   * filewatcher.
+   */
+  async importSshCommand(): Promise<void> {
+    const dry = await runCliCapture(binaryPath(), ["import", "--all", "--dry-run"]);
+    if (dry.code !== 0) {
+      void vscode.window.showErrorMessage(
+        vscode.l10n.t("portato: import failed: {0}", dry.stderr.trim() || dry.stdout.trim()),
+      );
+      return;
+    }
+    const parsed = parseImportPreview(dry.stdout);
+    if (parsed.kind === "empty") {
+      this.inform(vscode.l10n.t("nothing new to import from ~/.ssh/config"));
+      return;
+    }
+    if (parsed.kind === "unparsed") {
+      // Lenient by design, but never guess: surface the raw plan instead.
+      diagWarn("import preview could not be parsed", parsed.raw);
+      void vscode.window.showInformationMessage(
+        vscode.l10n.t(
+          "could not parse the import preview -- the raw output is in the Portato Diagnostics channel",
+        ),
+      );
+      return;
+    }
+    const items: Array<vscode.QuickPickItem & { row?: ImportRow }> = [];
+    for (const block of groupImportBlocks(parsed.rows)) {
+      items.push({ label: block.host, kind: vscode.QuickPickItemKind.Separator });
+      for (const row of block.rows) {
+        items.push({
+          label: row.name,
+          description: row.type,
+          detail: vscode.l10n.t("{0} (ssh: {1})", row.spec, row.host),
+          row,
+          picked: true,
+        });
+      }
+    }
+    const chosen = await vscode.window.showQuickPick(items, {
+      canPickMany: true,
+      matchOnDescription: true,
+      matchOnDetail: true,
+      placeHolder: vscode.l10n.t(
+        "pick ssh blocks to import -- selecting any forward imports its whole block",
+      ),
+    });
+    if (!chosen || chosen.length === 0) return;
+    const hosts = hostsForSelection(
+      parsed.rows,
+      new Set(chosen.flatMap((c) => (c.row ? [c.row.name] : []))),
+    );
+    if (hosts.length === 0) return;
+    const res = await runCliCapture(binaryPath(), ["import", ...hosts, "--yes"]);
+    if (res.code !== 0) {
+      void vscode.window.showErrorMessage(
+        vscode.l10n.t("portato: import failed: {0}", res.stderr.trim() || res.stdout.trim()),
+      );
+      return;
+    }
+    const count =
+      countImported(res.stdout) ||
+      parsed.rows.filter((r) => hosts.includes(r.host)).length;
+    this.inform(vscode.l10n.t("imported {0} tunnel(s) from ~/.ssh/config (added disabled)", count));
+  }
+
+  /**
+   * Palette: `portato doctor` in a VS Code terminal. A terminal whose
+   * shellPath is the binary itself closes the moment doctor exits and the
+   * report is lost, so a tiny sh wrapper runs the binary with argv only
+   * ("$0" "$@" -- the machine-scoped binary path and literal flags, no
+   * user-controlled text is ever re-parsed by a shell) and then parks the
+   * terminal on the exit code. isTransient keeps a window reload from
+   * resurrecting the session (--probe really dials every host).
+   */
+  doctorCommand(probe: boolean): void {
+    const args = ["doctor"];
+    if (probe) args.push("--probe");
+    // Check the same daemon this extension talks to when an override is set.
+    args.push(...socketOverrideArgs());
+    const terminal = vscode.window.createTerminal({
+      name: probe ? "portato doctor --probe" : "portato doctor",
+      shellPath: "/bin/sh",
+      shellArgs: [
+        "-c",
+        '"$0" "$@"; code=$?; printf "\\n[exit %s] press Enter to close" "$code"; read _',
+        binaryPath(),
+        ...args,
+      ],
+      isTransient: true,
+    });
+    terminal.show();
+  }
+
+  /**
+   * Palette: open the daemon's config.yaml. The path is computed from the
+   * same ConfigHome logic discovery uses; a daemon started with a custom
+   * --config is invisible to the extension, so this is our best truth.
+   * A missing file is info (the daemon creates it on first start); any
+   * other failure to reach or open it is a real error.
+   */
+  async openConfigCommand(): Promise<void> {
+    const file = join(configHome(), "portato", "config.yaml");
+    const uri = vscode.Uri.file(file);
+    try {
+      await vscode.workspace.fs.stat(uri);
+    } catch (e) {
+      if (e instanceof vscode.FileSystemError && e.code === "FileNotFound") {
+        void vscode.window.showInformationMessage(
+          vscode.l10n.t("{0} does not exist yet -- the daemon creates it on first start", file),
+        );
+        return;
+      }
+      void vscode.window.showErrorMessage(
+        vscode.l10n.t("cannot open {0}: {1}", file, String(e)),
+      );
+      return;
+    }
+    await vscode.window.showTextDocument(uri);
+  }
+
   /** Tree context: delete a tunnel after an explicit confirmation. */
   async deleteTunnelCommand(item?: TuberItem): Promise<void> {
     const client = this.client;
@@ -1160,6 +1298,10 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("portato.addTunnelWithTag", (item?: TagGroupItem) =>
       controller.addTunnelWithTagCommand(item),
     ),
+    vscode.commands.registerCommand("portato.importSsh", () => controller.importSshCommand()),
+    vscode.commands.registerCommand("portato.doctor", () => controller.doctorCommand(false)),
+    vscode.commands.registerCommand("portato.doctorProbe", () => controller.doctorCommand(true)),
+    vscode.commands.registerCommand("portato.openConfig", () => controller.openConfigCommand()),
   ];
 
   context.subscriptions.push(...disposables);

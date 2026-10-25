@@ -35,5 +35,9 @@
   "cfg.groupByTag.desc": "Group tunnels in the sidebar by their first tag. Drag-and-drop reorder is disabled while grouping or a filter is active.",
   "cfg.minLogLevel.desc": "Minimum level for the daemon log view (`Portato Logs`); entries below it are filtered out. The *Set Log Level...* command overrides this for the current session.",
   "cfg.autoStartDaemon.desc": "Start the Portato daemon automatically when the Tunnels view opens and no daemon is running. Fires at most once per window, never after you stop the daemon yourself, and only when the `portato` binary resolves.",
-  "cfg.showNotifications.desc": "Show informational notifications (copy confirmations, filter results and the like). Warnings, errors and passphrase/host-key prompts are always shown."
+  "cfg.showNotifications.desc": "Show informational notifications (copy confirmations, filter results and the like). Warnings, errors and passphrase/host-key prompts are always shown.",
+  "cmd.importSsh.title": "Import Forwards from SSH Config",
+  "cmd.doctor.title": "Run Portato Doctor",
+  "cmd.doctorProbe.title": "Run Portato Doctor (Probe Servers)",
+  "cmd.openConfig.title": "Open Portato Config"
 }

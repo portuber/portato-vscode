@@ -206,6 +206,30 @@
         "category": "Portato",
         "title": "%cmd.addTunnelWithTag.title%",
         "icon": "$(add)"
+      },
+      {
+        "command": "portato.importSsh",
+        "category": "Portato",
+        "title": "%cmd.importSsh.title%",
+        "icon": "$(arrow-down)"
+      },
+      {
+        "command": "portato.doctor",
+        "category": "Portato",
+        "title": "%cmd.doctor.title%",
+        "icon": "$(heart-pulse)"
+      },
+      {
+        "command": "portato.doctorProbe",
+        "category": "Portato",
+        "title": "%cmd.doctorProbe.title%",
+        "icon": "$(remote-explorer)"
+      },
+      {
+        "command": "portato.openConfig",
+        "category": "Portato",
+        "title": "%cmd.openConfig.title%",
+        "icon": "$(go-to-file)"
       }
     ],
     "viewsWelcome": [
