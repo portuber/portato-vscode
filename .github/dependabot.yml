@@ -20,6 +20,11 @@ updates:
       # typescript-eslint's peer range.
       - dependency-name: typescript
         versions: [">=6.1.0"]
+      # @types/vscode must track engines.vscode (^1.90): newer typings would
+      # let the compiler accept APIs that are missing at runtime on the
+      # minimum supported VS Code (closed PR #12). Bumped only by hand,
+      # together with engines.vscode.
+      - dependency-name: "@types/vscode"
   - package-ecosystem: github-actions
     directory: /
     schedule:
